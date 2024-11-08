@@ -33,14 +33,15 @@ def preprocess_image(path:str, mask:list):
     contours, _ = cv.findContours(thresh,cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
 # find centroids for each contour in image
     for contour in contours:
+            if cv.contourArea(contour) <= 500: # only calculate centroids for contours larger than 500px
 # calculate moments of the contour
-            M = cv.moments(contour)
-            if M["m00"] != 0:  # avoid divide by zero error
-                cX = int(M["m10"] / M["m00"])
-                cY = int(M["m01"] / M["m00"])
-# put the centroid on the RGB image
-                cv.circle(img_rgb, (cX, cY), 5, (255, 0, 0), -1)  # Blue dot at the centroid
-                cv.putText(img_rgb, "Centroid", (cX - 20, cY - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+                M = cv.moments(contour)
+                if M["m00"] != 0:  # avoid divide by zero error
+                    cX = int(M["m10"] / M["m00"])
+                    cY = int(M["m01"] / M["m00"])
+    # put the centroid on the RGB image
+                    cv.circle(img_rgb, (cX, cY), 5, (255, 0, 0), -1)  # Blue dot at the centroid
+                    cv.putText(img_rgb, "Centroid", (cX - 20, cY - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
 
 # show the result with centroids marked
     cv.imshow("Centroids in RGB Image", img_rgb)
