@@ -8,7 +8,7 @@ PIPELINE_COMPUTE_INTERVAL = .57 #seconds. the amount of time it takes for the pr
 
 
 class Blueberry:
-    def init(self,ripeness,belt,actuation_time,location_linear):
+    def __init__(self,ripeness,belt,actuation_time,location_linear):
         self.ripeness = ripeness # -1 - unripe, 0 unclassifies, 1 ripe, 2 overripe
         self.belt = belt # 1 through 3
         self.actuation_time = actuation_time #float: number of seconds til actuation time

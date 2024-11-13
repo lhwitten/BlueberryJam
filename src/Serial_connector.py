@@ -2,9 +2,14 @@
 import serial
 import threading
 import time
-
+import os
 #TODO write procedure for finding correct port
-ser = serial.Serial('/dev/ttyACM0', 9600, timeout=1)  # Adjust port and baud rate as necessary
+
+port = '/dev/ttyACM0'
+if os.path.exists(port):
+    ser = serial.Serial(port, 9600, timeout=1)  # Adjust port and baud rate as necessary
+else:
+    ser = None
 
 # Initialize variables with timestamps
 motor_speed = 150
