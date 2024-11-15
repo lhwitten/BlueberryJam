@@ -1,5 +1,9 @@
 import cv2 as cv
 import numpy as np
+from ripe_avg_val import ripe_avg_val
+
+SIM_THRESH = 0.73
+
 #TODO: create ground truth vector for comparison to ripe berries
 def crop_single_luv_img(img_rgb, centroid:tuple):
 # get centroid'd image in RGB
@@ -8,6 +12,9 @@ def crop_single_luv_img(img_rgb, centroid:tuple):
 # retrieve box dimensions
     [x,y,w,h] = centroid[2]
 # crop img into smaller images using box dims
+    height, width = img_luv.shape[:2]
+    if x < 0 or y < 0 or x + w > width or y + h > height:
+        return []
     return img_luv[y:y+h, x:x+w]
 def norm(vector:list):
     return np.sqrt(sum(x * x for x in vector))    
@@ -38,3 +45,9 @@ def compare_img_vectors(img_a:tuple, img_b:tuple) -> float:
     vsim = cosine_similarity(img_a[2], img_b[2])
 # return the average of the similarities
     return np.average([lsim, usim, vsim])
+
+def compare_to_avg(img: tuple) -> float:
+    return compare_img_vectors(img, ripe_avg_val)
+
+def check_ripeness(sim:float) -> bool:
+    return True if sim > SIM_THRESH else False
