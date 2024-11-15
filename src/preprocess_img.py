@@ -139,8 +139,8 @@ def perform_centroiding(masked_frame,img_rgb):
     centroids = []
     for contour in contours:
         # print(cv.contourArea(contour))
-        
-        if cv.contourArea(contour) >= 500: # only calculate centroids for contours larger than 500px
+        contour_area = cv.contourArea(contour) #original just asks contour to be larger than 500
+        if contour_area >= 1000 and contour_area < 13000: # only calculate centroids for contours larger than 500px
 # calculate moments of the contour
             M = cv.moments(contour)
             if M["m00"] != 0:  # avoid divide by zero error
