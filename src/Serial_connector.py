@@ -27,7 +27,9 @@ def send_data(motor_speed, shutdown, update_time):
     ripeness = 0
     time1 =0.0
     elapsed_time = time.monotonic() - update_time
-    data_packet = f"{motor_speed}|{belt_num}|{ripeness}|{int(shutdown)}|{time1}|{elapsed_time:.3f}\n"
+    motor_update = 1
+    #data_packet = f"{motor_speed}|{belt_num}|{ripeness}|{int(shutdown)}|{time1}|{elapsed_time:.3f}\n"
+    data_packet = f"{motor_speed:.3f}|{belt_num}|{ripeness}|{int(shutdown)}|{time1:.3f}|{elapsed_time:.3f}|{motor_update}\n"
     ser.write(data_packet.encode())
 
 def async_serial_comm_update_vars(interval=1):
@@ -88,7 +90,10 @@ def send_blueberry_list_data(process_queue,motor_speed, shutdown, update_time):
         time1 = berry_send.actuation_time
         belt_num = berry_send.belt
         ripeness= berry_send.ripeness
+        motor_update =0
 
-        data_packet = f"{motor_speed}|{belt_num}|{ripeness}|{int(shutdown)}|{time1}|{elapsed_time:.3f}\n"
+        data_packet = f"{motor_speed:.3f}|{belt_num}|{ripeness}|{int(shutdown)}|{time1:.3f}|{elapsed_time:.3f}|{motor_update}\n"
+
+        #data_packet = f"{motor_speed}|{belt_num}|{ripeness}|{int(shutdown)}|{time1}|{elapsed_time:.3f}\n"
         ser.write(data_packet.encode())
 
