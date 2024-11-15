@@ -35,19 +35,22 @@ def calculate_blueberry_timing(blueberry:Blueberry,motor_throttle):
 
     speed, total_visible_time = calculate_determination_window(motor_throttle)
 
-    if total_visible_time < 2*PIPELINE_COMPUTE_INTERVAL:
-        print("BELT SPEED IS TOO FAST") #TODO REPLACE WITH ERROR
-        return 0,blueberry
+    # if total_visible_time < 2*PIPELINE_COMPUTE_INTERVAL:
+    #     print("BELT SPEED IS TOO FAST") #TODO REPLACE WITH ERROR
+    #     return 0,blueberry
 
     #how far along the belt the blueberry was at time of classification
     lag_distance = speed * PIPELINE_COMPUTE_INTERVAL 
     current_location = blueberry.location_linear  + lag_distance 
 
-    #return nothing because we will have to reclassify it later
-    if VISIBLE_BELT_LENGHT - lag_distance > blueberry.location_linear:
-        return 0,blueberry
+    # #return nothing because we will have to reclassify it later
+    # if VISIBLE_BELT_LENGHT - lag_distance > blueberry.location_linear:
+    #     return 0,blueberry
 
     #TODO DETERMINE IF AN OFFSET IN TIMING IS NEEDED TO FIX ACTUATION TIMING
+    print(f"current location,speed is {current_location},{speed}")
 
     blueberry.actuation_time = (TOTAL_BELT_LENGTH - current_location)/speed #the number of seconds until the end of the belt is reached
+
+    #make this ms at the end
     return 1, blueberry
