@@ -4,6 +4,7 @@ from preprocess_img import classify_berry_naive
 from Classifier import *
 from preprocess_img import *
 from calculate_timing import calculate_blueberry_timing
+from calculate_timing import *
 import serial
 import threading
 import time
@@ -32,12 +33,16 @@ def main(serial_connected = True):
 
     #change variables
     motor_speed = 200
+    motor_throttle = .05
     servo_angles = [100, 50, 120]
     actuation_times = [1200, 1800, 1600]
     new_shutdown = False
     
     # Update variables in the communication module
     update_variables(motor_speed, servo_angles, new_shutdown, actuation_times)
+
+    #a list of known blueberries
+    persistent_blueberry_tracker = []
 
 
 
@@ -56,6 +61,7 @@ def main(serial_connected = True):
                 # with open(output_folder + log_file,"a") as f:
                 #     f.write(f"about to grab frame at: {time.time() - first_time}\n")
                 frame = capture_camera_stream(my_cam,-1)
+                time_at_picture = time.time()
                 
                 # Show the video stream (requires display capability)
                 cv2.imshow("Camera Stream", frame)
@@ -84,13 +90,14 @@ def main(serial_connected = True):
                 
                 # cv2.imshow("Processed Stream", processed)
 
-                last_process_time = current_time  # Update last capture time
-
+                
                 # with open(output_folder + log_file,"a") as f:
                 #     f.write(f"finished frame process at: {time.time() - first_time}\n")
                 
                 #ripeness (unset), belt num, time to actuate (unset), current_location
-                berry = Blueberry(ripeness=0,belt=1,actuation_time=0.0,location_linear=5)
+                berry = Blueberry(ripeness=0,belt=1,actuation_time=0.0,location_linear=5) #TODO calculate current location
+
+
 
                 
                 blueberry_list = [classify_berry_naive(processed,berry)] #TODO
@@ -99,7 +106,7 @@ def main(serial_connected = True):
                 annotation_space = img_rgb.copy()
                 for centroid in centroids:
                     loc = centroid[1]
-                    berry = Blueberry(ripeness=0,belt=1,actuation_time=0.0,location_linear=loc/150 )
+                    berry = Blueberry(ripeness=0,belt=1,actuation_time=0.0,location_linear=abs(calculate_linear_location(loc)) )
                     berry.ripeness = classify_single(img_rgb,annotation_space,centroid)
                     if berry.ripeness == -5:
                         continue
@@ -108,12 +115,18 @@ def main(serial_connected = True):
                 cv.imshow("annotated image",annotation_space)
 
                 #blueberry_list = classify_berries(masked,img_rgb,centroids)
+
+                #update the tracker with expected blueberry locations
+                update_persistence_tracker(persistent_blueberry_tracker,motor_throttle,time.time()-last_process_time)
+
+                #append to the persistent tracker and return the list of untracked blueberries
+                blueberry_list =compare_and_update_tracker(persistent_blueberry_tracker,blueberry_list) 
                 
                 send_list = []
                 for blueberry_obj in blueberry_list:
                     
-                    motor_throttle = .05
-                    valid_send, berry_candidate = (calculate_blueberry_timing(blueberry_obj,motor_throttle))
+                    
+                    valid_send, berry_candidate = (calculate_blueberry_timing(blueberry_obj,motor_throttle,time.time() - time_at_picture))
                     berry_candidate.actuation_time = 4.0
                     berry_candidate.ripeness =-1
                     print(f"berry actuation time is {berry_candidate.actuation_time} and valid send is {valid_send}")
@@ -123,6 +136,9 @@ def main(serial_connected = True):
                         send_list.append(berry_candidate)
                 #print(f"updating queue with: {send_list}")
                 update_blueberry_queue(send_list)
+
+                last_process_time = time.time()  # Update last capture time
+
                 
 
 
