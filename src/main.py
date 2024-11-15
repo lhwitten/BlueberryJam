@@ -54,10 +54,10 @@ def main(serial_connected = True):
                 # Grab the latest frame for preview
                 # with open(output_folder + log_file,"a") as f:
                 #     f.write(f"about to grab frame at: {time.time() - first_time}\n")
-                frame = capture_camera_stream(my_cam,-1)
+                frame = capture_camera_stream(my_cam,1)
                 
                 # Show the video stream (requires display capability)
-                # cv2.imshow("Camera Stream", frame)
+                cv2.imshow("Camera Stream", frame)
                 image_path = 'R_06.11'
 
                 mask = [(0, 70, 100), (95, 125, 134)] # [low, high]
@@ -68,7 +68,8 @@ def main(serial_connected = True):
                 #processed = preprocess_image(mask,path=None,frame=None)
                 #processed = preprocess_image(mask,path=None,frame=frame)
                 
-                masked,img_rgb = perform_backgrounding(mask,frame=frame)
+                masked,img_rgb = perform_backgrounding(mask,frame=crop_img_center(frame, 1000,bias = -300))
+
 
                 processed, centroids = perform_centroiding(masked,img_rgb)
                 

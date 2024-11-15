@@ -163,7 +163,23 @@ def perform_centroiding(masked_frame,img_rgb):
 
 # show the result with centroids marked
     cv.imshow("Centroids in RGB Image", img_rgb)
-    cv.waitKey(0)
+    #cv.waitKey(0)
     # print("processing got here 5")
 
     return img_rgb,centroids
+
+def crop_img_center(img_rgb, crop_width,bias=0):
+# get centroid'd image in RGB
+# convert to LUV
+
+
+    height,width = img_rgb.shape[:2]
+
+    band_height = height
+    band_width = crop_width
+
+    start_y = (height - band_height) //2
+    end_y = start_y + band_height
+    start_x = (width - band_width) //2 + bias
+    end_x = start_x + band_width
+    return img_rgb[start_y:end_y, start_x:end_x]

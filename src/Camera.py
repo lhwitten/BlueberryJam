@@ -19,7 +19,9 @@ def initialize_camera_stream(save_output =0):
     picam2 = Picamera2()
 
     # Set the capture directory and ensure it exists
-    capture_directory = "../captures/streams/" + f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    #capture_directory = "../captures/streams/" + f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    capture_directory = "/home/blueberryjam/BlueberryJam/captures/streams/" + f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
     os.makedirs(capture_directory, exist_ok=True)
 
     # Set the capture interval (in seconds)
