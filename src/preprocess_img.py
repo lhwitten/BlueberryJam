@@ -129,8 +129,8 @@ def perform_backgrounding( mask:list, path:str = None,frame = None):
 def perform_centroiding(masked_frame,img_rgb):
     # threshold masked image to get binary image
     retval,thresh = cv.threshold(masked_frame,0,255,cv.THRESH_BINARY+cv.THRESH_OTSU)
-    cv.imshow("Binary Image", thresh)
-    #cv.waitKey(0)
+    # cv.imshow("Binary Image", thresh)
+    # #cv.waitKey(0)
 
     # print("processing got here 4")
 # find contours
@@ -166,9 +166,9 @@ def perform_centroiding(masked_frame,img_rgb):
                 centroids.append((cX,cY,box))
 
 # show the result with centroids marked
-    cv.imshow("Centroids in RGB Image", img_rgb)
-    #cv.waitKey(0)
-    # print("processing got here 5")
+    # cv.imshow("Centroids in RGB Image", img_rgb)
+    # #cv.waitKey(0)
+    # # print("processing got here 5")
 
     return img_rgb,centroids
 
