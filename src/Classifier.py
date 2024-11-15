@@ -25,15 +25,15 @@ def cosine_similarity(vec_a:list, vec_b:list) -> float:
         return dot / (norm_a * norm_b) if norm_a * norm_b != 0 else 0.0
 def create_def_vectors(img_luv) -> tuple:
 # split color channels into L, U, and V
-    print("got here 0")
+    # print("got here 0")
     l_channel, u_channel, v_channel = cv.split(img_luv)
     histSize = 256
     histRange = (0, 255)
-    print("got here 1")
+    # print("got here 1")
 # find hist vector from L channel
     lcounts = np.histogram(l_channel.flatten(), bins=histSize, range=histRange)
     lvalues = lcounts[0].tolist()
-    print("got here 2")
+    # print("got here 2")
 # find hist vector from U channel
     ucounts = np.histogram(u_channel.flatten(), bins=histSize, range=histRange)
     uvalues = ucounts[0].tolist()
@@ -57,11 +57,11 @@ def check_ripeness(sim:float) -> bool:
 
 def classify_single(img_rgb,img_copy, single_centroid):
    img_luv  = crop_single_luv_img(img_rgb, single_centroid)
-   print("got here -1")
+   #print("got here -1")
    if img_luv == []:
-    print("img_luv is None")
+    #print("img_luv is None")
     return -5
-   print(img_luv)
+   #print(img_luv)
 
    def_vectors = create_def_vectors(img_luv)
 
@@ -76,12 +76,12 @@ def classify_single(img_rgb,img_copy, single_centroid):
 def annotate_and_show(img_copy,centroid,similarity,ripeness):
     #[x_min,y_min,width,height]
     if ripeness:
-        text = "ripe"
+        text = f"ripe, sim:{round(similarity,3)}" 
     else:
-        text = "overripe"
+        text = f"overripe, sim:{round(similarity,3)}" 
     
     position = (centroid[0],centroid[1])
-    cv.putText(img_copy,text, position, cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+    cv.putText(img_copy,text, position, cv.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
     #cv.imshow("Annotated frame", annotation_frame)
 
 # def annotate_and_show(img_rgb,berry_list):
