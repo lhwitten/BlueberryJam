@@ -5,7 +5,7 @@ import time
 import os
 #TODO write procedure for finding correct port
 
-port = '/dev/ttyACM0'
+port = '/dev/ttyACM1'
 if os.path.exists(port):
     ser = serial.Serial(port, 9600, timeout=1)  # Adjust port and baud rate as necessary
 else:
@@ -93,7 +93,8 @@ def send_blueberry_list_data(process_queue,motor_speed, shutdown, update_time):
         motor_update =0
 
         data_packet = f"{motor_speed:.3f}|{belt_num}|{ripeness}|{int(shutdown)}|{time1:.3f}|{elapsed_time:.3f}|{motor_update}\n"
-
+        print("sending blueberry packet")
+        print(data_packet)
         #data_packet = f"{motor_speed}|{belt_num}|{ripeness}|{int(shutdown)}|{time1}|{elapsed_time:.3f}\n"
         ser.write(data_packet.encode())
 

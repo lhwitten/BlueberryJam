@@ -79,7 +79,7 @@ def convert_pc2_cv2img(frame):
 
 def classify_berry_naive(frame,berry):
     #preprocessing is complete
-    berry.ripeness = randint(1,3)
+    berry.ripeness = randint(-1,2)
     return berry
 
 
@@ -147,16 +147,20 @@ def perform_centroiding(masked_frame,img_rgb):
                 cX = int(M["m10"] / M["m00"]) 
                 cY = int(M["m01"] / M["m00"])
 # put the centroid on the RGB image
-                cv.circle(img_rgb, (cX, cY), 5, (255, 0, 0), -1)  # Blue dot at the centroid
-                cv.putText(img_rgb, "Centroid", (cX - 20, cY - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+                
 
                 (circle_x,circle_y), radius = cv.minEnclosingCircle(contour)
 
-                x_min = int(cX - radius) if int(cX - radius) > 0 else 0
+                x_min = int(cX - radius) if int(cX - radius) > 0 else 0 
                 y_min = int(cY - radius) if int(cY - radius) > 0 else 0
+
+                # if int(cX - radius) > 0 or int(cY - radius) > 0:
+                #     continue
                 width = int(2*radius)
                 height = width
                 box = [x_min,y_min,width,height]
+                cv.circle(img_rgb, (cX, cY), 5, (255, 0, 0), -1)  # Blue dot at the centroid
+                cv.putText(img_rgb, "Centroid", (cX - 20, cY - 10), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 1)
                 cv.rectangle(img_rgb,(x_min,y_min),(x_min + width,y_min + height),(0,255,0),2)
 
                 centroids.append((cX,cY,box))

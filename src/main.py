@@ -1,6 +1,7 @@
 from Camera import *
 from preprocess_img import preprocess_image
 from preprocess_img import classify_berry_naive
+from Classifier import *
 from preprocess_img import *
 from calculate_timing import calculate_blueberry_timing
 import serial
@@ -61,7 +62,8 @@ def main(serial_connected = True):
                 image_path = 'R_06.11'
 
                 #mask = [(0, 70, 100), (95, 125, 134)] # [low, high]
-                mask = [(0, 70, 100), (95, 125, 134)] # [low, high]
+                mask = [(0, 70, 100), (95, 140, 134)] # [low, high]
+                #mask = [(0, 70, 100), (95, 140, 137)]
                 #user_input = input("input mask")
                 
                 # with open(output_folder + log_file,"a") as f:
@@ -85,15 +87,32 @@ def main(serial_connected = True):
                 
                 #ripeness (unset), belt num, time to actuate (unset), current_location
                 berry = Blueberry(ripeness=0,belt=1,actuation_time=0.0,location_linear=5)
+
+                
                 blueberry_list = [classify_berry_naive(processed,berry)] #TODO
+
+                blueberry_list = []
+                annotation_space = img_rgb.copy()
+                for centroid in centroids:
+                    loc = centroid[1]
+                    berry = Blueberry(ripeness=0,belt=1,actuation_time=0.0,location_linear=loc/150 )
+                    berry.ripeness = classify_single(img_rgb,annotation_space,centroid)
+                    if berry.ripeness == -5:
+                        continue
+                    
+                    blueberry_list.append(berry)
+                cv.imshow("annotated image",annotation_space)
 
                 #blueberry_list = classify_berries(masked,img_rgb,centroids)
                 
                 send_list = []
                 for blueberry_obj in blueberry_list:
                     
-                    motor_throttle = .1
-                    valid_send, berry_candidate = calculate_blueberry_timing(blueberry_obj,motor_throttle)
+                    motor_throttle = .05
+                    valid_send, berry_candidate = (calculate_blueberry_timing(blueberry_obj,motor_throttle))
+                    berry_candidate.ripeness =-1
+                    print(f"berry actuation time is {berry_candidate.actuation_time} and valid send is {valid_send}")
+                    valid_send =1
 
                     if valid_send ==1 and serial_connected:
                         send_list.append(berry_candidate)
@@ -119,6 +138,6 @@ def main(serial_connected = True):
             ser.close()
 
 if __name__ == "__main__":
-    serial_connected = False
+    serial_connected = True
 
     main(serial_connected)
