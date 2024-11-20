@@ -1,6 +1,8 @@
 import cv2 as cv
 import numpy as np
 from ripe_avg_val import ripe_avg_val
+from overripe_avg_val import overripe_avg_val
+from unripe_avg_val import unripe_avg_val
 #from numpy import flatten
 SIM_THRESH = 0.73
 
@@ -49,11 +51,14 @@ def compare_img_vectors(img_a:tuple, img_b:tuple) -> float:
 # return the average of the similarities
     return np.average([lsim, usim, vsim])
 
-def compare_to_avg(img: tuple) -> float:
-    return compare_img_vectors(img, ripe_avg_val)
+def compare_to_avgs(img: tuple) -> float:
+    ripe_sim = compare_img_vectors(img, ripe_avg_val)
+    overripe_sim = compare_img_vectors(img, overripe_avg_val)
+    unripe_sim = compare_img_vectors(img, unripe_avg_val)
+    return (ripe_sim, overripe_sim, unripe_sim)
 
-def check_ripeness(sim:float) -> bool:
-    return True if sim > SIM_THRESH else False
+def check_ripeness(ripeness_sims: tuple) -> int:
+    return ripeness_sims.index(max(ripeness_sims))
 
 def classify_single(img_rgb,img_copy, single_centroid):
    img_luv  = crop_single_luv_img(img_rgb, single_centroid)
@@ -65,7 +70,7 @@ def classify_single(img_rgb,img_copy, single_centroid):
 
    def_vectors = create_def_vectors(img_luv)
 
-   similarity_vec = compare_to_avg(def_vectors)
+   similarity_vec = compare_to_avgs(def_vectors)
 
    is_ripe = check_ripeness(similarity_vec)
 
@@ -75,13 +80,15 @@ def classify_single(img_rgb,img_copy, single_centroid):
 
 def annotate_and_show(img_copy,centroid,similarity,ripeness):
     #[x_min,y_min,width,height]
-    if ripeness:
-        text = f"ripe, sim:{round(similarity,3)}" 
+    if ripeness == 0:
+        text = f"ripe, highest sim:{round(similarity[0],3)}\n [overripe: {round(similarity[1],3)}, unripe: {round(similarity[2],3)}]"  
+    elif ripeness == 1:
+        text = f"overripe, highest sim:{round(similarity[1],3)}\n [ripe: {round(similarity[0],3)}, unripe: {round(similarity[2],3)}]" 
     else:
-        text = f"overripe, sim:{round(similarity,3)}" 
+        text = f"unripe, highest sim:{round(similarity[2],3)}\n [ripe: {round(similarity[0],3)}, overripe: {round(similarity[1],3)}]" 
     
     position = (centroid[0],centroid[1])
-    cv.putText(img_copy,text, position, cv.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
+    cv.putText(img_copy,text, position, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
     #cv.imshow("Annotated frame", annotation_frame)
 
 # def annotate_and_show(img_rgb,berry_list):
