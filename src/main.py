@@ -62,8 +62,12 @@ def main(serial_connected = True):
                 image_path = 'R_06.11'
 
                 #mask = [(0, 70, 100), (95, 125, 134)] # [low, high]
-                mask = [(0, 70, 100), (95, 140, 134)] # [low, high]
-                #mask = [(0, 70, 100), (95, 140, 137)]
+                #mask = [(0, 70, 100), (95, 140, 134)] # [low, high] #mask for only overripe
+                #mask = [(0, 70, 100), (95, 140, 137)] #better mask for just overripe
+                #mask = [(0, 70, 100), (95, 140, 150)] # mask for just overripe and ripe
+                mask = [(0, 70, 100), (95, 140, 160)] #mask for all 3
+                #mask = [(0, 102, 138), (95, 140, 150)] #mask for just ripe
+                #mask = [(0, 70, 150), (95, 140, 160)] #mask for just green
                 #user_input = input("input mask")
                 
                 # with open(output_folder + log_file,"a") as f:
@@ -110,13 +114,14 @@ def main(serial_connected = True):
                     
                     motor_throttle = .05
                     valid_send, berry_candidate = (calculate_blueberry_timing(blueberry_obj,motor_throttle))
+                    berry_candidate.actuation_time = 4.0
                     berry_candidate.ripeness =-1
                     print(f"berry actuation time is {berry_candidate.actuation_time} and valid send is {valid_send}")
                     valid_send =1
 
                     if valid_send ==1 and serial_connected:
                         send_list.append(berry_candidate)
-                
+                #print(f"updating queue with: {send_list}")
                 update_blueberry_queue(send_list)
                 
 
@@ -138,6 +143,6 @@ def main(serial_connected = True):
             ser.close()
 
 if __name__ == "__main__":
-    serial_connected = True
+    serial_connected = False
 
     main(serial_connected)
