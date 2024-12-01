@@ -187,3 +187,45 @@ def crop_img_center(img_rgb, crop_width,bias=0):
     start_x = (width - band_width) //2 + bias
     end_x = start_x + band_width
     return img_rgb[start_y:end_y, start_x:end_x]
+
+def apply_multi_bg(masks: list, path: str = None) -> list:
+    '''
+    Applies multiple masks to an image, returning a list of masked images.
+        Args: 
+    
+    masks: a list of tuples containing the low and high values for L, U, and V color channels
+    
+    path: a string representing the relative path to the image to be masked
+
+        Returns:
+    
+        list of masked images # index -1 will always be the image of all applied masks combined
+    '''
+    # Initialize an empty list to store the masked images
+    masked_images = []
+
+    # Loop through each range of low and high values, and use the apply_background function
+    for i, (lower, upper) in enumerate(masks):
+        # Call the apply_background function to create the mask for each range
+        mask, img_rgb = perform_backgrounding([lower, upper], path=path)
+
+        # Apply the mask using cv2.bitwise_and
+        masked_image = cv.bitwise_and(img_rgb, img_rgb, mask=mask)
+
+        # Append the masked image to the list
+        masked_images.append(masked_image)
+
+        # Initialize the combined_mask with the first mask on the first iteration
+        if i == 0:
+            combined_mask = np.zeros_like(mask)  # Initialize the combined mask with the first mask's shape
+
+        # Combine all the masks using bitwise OR
+        combined_mask = cv.bitwise_or(combined_mask, mask)
+
+    # Apply the combined mask to the image
+    combined_image = cv.bitwise_and(img_rgb, img_rgb, mask=combined_mask)
+
+    # Append the combined image to the list
+    masked_images.append(combined_image)
+
+    return masked_images
