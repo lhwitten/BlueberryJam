@@ -75,6 +75,8 @@ def main(serial_connected = True):
                 #mask = [(0, 102, 138), (95, 140, 150)] #mask for just ripe
                 #mask = [(0, 70, 150), (95, 140, 160)] #mask for just green
                 #user_input = input("input mask")
+
+                # masks = [[(0, 70, 100), (95, 140, 137)],[(0, 102, 138), (95, 140, 150)],[(0, 70, 100), (95, 140, 160)]]
                 
                 # with open(output_folder + log_file,"a") as f:
 
@@ -83,8 +85,17 @@ def main(serial_connected = True):
                 #processed = preprocess_image(mask,path=None,frame=None)
                 #processed = preprocess_image(mask,path=None,frame=frame)
                 
+                
                 masked,img_rgb = perform_backgrounding(mask,frame=crop_img_center(frame, 1000,bias = -300))
-
+                
+                # for multiple masks
+                # masked_imgs,img_rgb = apply_multi_bg(masks,frame=crop_img_center(frame, 1000,bias = -300))
+                # processed_imgs = []
+                # centroid_results = []
+                # for i, img in enumerate(masked_imgs):
+                #     processed, centroids = perform_centroiding(img,img_rgb)
+                #     processed_imgs.append(processed)
+                #     centroid_results.append(centroids)
 
                 processed, centroids = perform_centroiding(masked,img_rgb)
                 

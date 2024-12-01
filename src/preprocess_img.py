@@ -188,14 +188,16 @@ def crop_img_center(img_rgb, crop_width,bias=0):
     end_x = start_x + band_width
     return img_rgb[start_y:end_y, start_x:end_x]
 
-def apply_multi_bg(masks: list, path: str = None) -> list:
+def apply_multi_bg(masks: list, path: str = None, frame = None) -> list:
     '''
     Applies multiple masks to an image, returning a list of masked images.
         Args: 
     
     masks: a list of tuples containing the low and high values for L, U, and V color channels
     
-    path: a string representing the relative path to the image to be masked
+    path: a string representing the relative path to the image to be masked; default value is None
+
+    frame: a cropped frame from a video; default value is None
 
         Returns:
     
@@ -207,7 +209,7 @@ def apply_multi_bg(masks: list, path: str = None) -> list:
     # Loop through each range of low and high values, and use the apply_background function
     for i, (lower, upper) in enumerate(masks):
         # Call the apply_background function to create the mask for each range
-        mask, img_rgb = perform_backgrounding([lower, upper], path=path)
+        mask, img_rgb = perform_backgrounding([lower, upper], path=path, frame=frame)
 
         # Apply the mask using cv2.bitwise_and
         masked_image = cv.bitwise_and(img_rgb, img_rgb, mask=mask)
@@ -228,4 +230,4 @@ def apply_multi_bg(masks: list, path: str = None) -> list:
     # Append the combined image to the list
     masked_images.append(combined_image)
 
-    return masked_images
+    return masked_images, img_rgb
