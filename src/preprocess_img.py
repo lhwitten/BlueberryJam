@@ -25,7 +25,7 @@ def preprocess_image( mask:list, path:str = None,frame = None):
 
 # convert to viewable and usable color spaces
     img_rgb = cv.cvtColor(img, cv.COLOR_BGR2RGB)
-    img_luv = cv.cvtColor(img, cv.COLOR_BGR2LUV)
+    img_luv = cv.cvtColor(img, cv.COLOR_BGR2HSV)
     # cv.imshow("RGB Image", img_rgb)
     # cv.waitKey(0)
 
@@ -105,7 +105,7 @@ def perform_backgrounding( mask:list, path:str = None,frame = None):
 
 # convert to viewable and usable color spaces
     img_rgb = cv.cvtColor(img, cv.COLOR_BGR2RGB)
-    img_luv = cv.cvtColor(img, cv.COLOR_BGR2LUV)
+    img_luv = cv.cvtColor(img, cv.COLOR_BGR2HSV)
     # cv.imshow("RGB Image", img_rgb)
     # cv.waitKey(0)
 
@@ -121,7 +121,7 @@ def perform_backgrounding( mask:list, path:str = None,frame = None):
     luv_hi = mask[1]
 # apply color mask to image
     mask_luv = cv.inRange(img_luv, luv_lo, luv_hi)
-    cv.imshow("LUV Mask", mask_luv)
+    cv.imshow("HSV Mask", mask_luv)
     #cv.waitKey(0)
 
     return mask_luv,img_rgb
@@ -140,7 +140,7 @@ def perform_centroiding(masked_frame,img_rgb):
     for contour in contours:
         # print(cv.contourArea(contour))
         contour_area = cv.contourArea(contour) #original just asks contour to be larger than 500
-        if contour_area >= 1000 and contour_area < 13000: # only calculate centroids for contours larger than 500px
+        if contour_area >= 1300 and contour_area < 13000: # only calculate centroids for contours larger than 500px
 # calculate moments of the contour
             M = cv.moments(contour)
             if M["m00"] != 0:  # avoid divide by zero error
@@ -153,6 +153,9 @@ def perform_centroiding(masked_frame,img_rgb):
 
                 x_min = int(cX - radius) if int(cX - radius) > 0 else 0 
                 y_min = int(cY - radius) if int(cY - radius) > 0 else 0
+
+                if radius > 50:
+                    continue #radius too big
 
                 # if int(cX - radius) > 0 or int(cY - radius) > 0:
                 #     continue
@@ -205,6 +208,7 @@ def apply_multi_bg(masks: list, path: str = None, frame = None) -> list:
     '''
     # Initialize an empty list to store the masked images
     masked_images = []
+    mask_list = []
 
     # Loop through each range of low and high values, and use the apply_background function
     for i, (lower, upper) in enumerate(masks):
@@ -216,6 +220,7 @@ def apply_multi_bg(masks: list, path: str = None, frame = None) -> list:
 
         # Append the masked image to the list
         masked_images.append(masked_image)
+        mask_list.append(mask)
 
         # Initialize the combined_mask with the first mask on the first iteration
         if i == 0:
@@ -226,8 +231,9 @@ def apply_multi_bg(masks: list, path: str = None, frame = None) -> list:
 
     # Apply the combined mask to the image
     combined_image = cv.bitwise_and(img_rgb, img_rgb, mask=combined_mask)
+    mask_list.append(combined_mask)
 
     # Append the combined image to the list
     masked_images.append(combined_image)
 
-    return masked_images, img_rgb
+    return masked_images, img_rgb,mask_list

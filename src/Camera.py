@@ -18,6 +18,15 @@ def initialize_camera_stream(save_output =0):
 
     picam2 = Picamera2()
 
+    #configuration stuff
+    camera_config = picam2.create_preview_configuration()
+    # camera_config = picam2.create_video_configuration()
+    # camera_config["size"] = (1280, 720)  # Adjust as needed
+    # camera_config["format"] = "RGB888"  # Select a format compatible with your CV pipeline
+    picam2.configure(camera_config)
+
+
+
     # Set the capture directory and ensure it exists
     #capture_directory = "../captures/streams/" + f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     capture_directory = "/home/blueberryjam/BlueberryJam/captures/streams/" + f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -27,9 +36,12 @@ def initialize_camera_stream(save_output =0):
     # Set the capture interval (in seconds)
     capture_interval = 5  # Adjust this for your preferred interval
 
+    picam2.set_controls({"AfMode": 0}) # turn off autofocus
+    picam2.set_controls({"LensPosition": 2.5}) #set focus
+
+
     # Start the camera and open preview
     picam2.start()
-
 
     stream_cam = cam_struct(picam2,capture_directory,save_output,capture_directory)
 
@@ -45,6 +57,17 @@ def capture_camera_stream(camera:cam_struct, override_write = 0):
     """
     frame = camera.cam.capture_array()
     filename = os.path.join(camera.directory, f"image_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg")
+
+    metadata = camera.cam.capture_metadata()  # Get the latest metadata
+    lens_position = metadata.get("LensPosition", None)  # Extract lens position if available
+
+    
+    # Print lens position if available
+    if lens_position is not None:
+        print(f"Lens Position: {lens_position:.2f}")
+    else:
+        print("Lens Position not available.")
+
 
 
     if override_write ==-1:

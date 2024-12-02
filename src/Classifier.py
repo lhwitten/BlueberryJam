@@ -81,19 +81,29 @@ def classify_single(img_rgb,img_copy, single_centroid):
 def annotate_and_show(img_copy,centroid,similarity,ripeness):
     #[x_min,y_min,width,height]
     if ripeness == 0:
-        text = f"ripe, highest sim:{round(similarity[0],3)}"
-        subtext = f"[R:{round(similarity[0],3)} O: {round(similarity[1],3)}, U: {round(similarity[2],3)}]"  
+        text = f"ripe,         :{round(similarity[0],3)}"
+        subtext = f"R:{round(similarity[0],3)}"
+        sub2 =   f"O: {round(similarity[1],3)}"
+        sub3 =   f"U: {round(similarity[2],3)}"
     elif ripeness == 1:
-        text = f"overripe, highest sim:{round(similarity[1],3)}"
-        subtext = f"[R:{round(similarity[0],3)} O: {round(similarity[1],3)}, U: {round(similarity[2],3)}]"   
+        text = f"overripe,     :{round(similarity[1],3)}"
+        subtext = f"R:{round(similarity[0],3)}"
+        sub2 =   f"O: {round(similarity[1],3)}"
+        sub3 =   f"U: {round(similarity[2],3)}"
     else:
-        text = f"unripe, highest sim:{round(similarity[2],3)}"
-        subtext = f"[R:{round(similarity[0],3)} O: {round(similarity[1],3)}, U: {round(similarity[2],3)}]"   
+        text = f"unripe,       :{round(similarity[2],3)}"
+        subtext = f"R:{round(similarity[0],3)}"
+        sub2 =   f"O: {round(similarity[1],3)}"
+        sub3 =   f"U: {round(similarity[2],3)}"
     
     position = (centroid[0],centroid[1])
-    offset_pos = (position[0] + 0,position[1] + 10)
+    offset_pos = (position[0] + 0,position[1] + 12)
+    offset_pos2 = (position[0] + 0,position[1] + 24)
+    offset_pos3 = (position[0] + 0,position[1] + 36)
     cv.putText(img_copy,text, position, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
     cv.putText(img_copy,subtext, offset_pos, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
+    cv.putText(img_copy,sub2, offset_pos2, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
+    cv.putText(img_copy,sub3, offset_pos3, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
     #cv.imshow("Annotated frame", annotation_frame)
 
 # def annotate_and_show(img_rgb,berry_list):
