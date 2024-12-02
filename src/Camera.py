@@ -58,15 +58,15 @@ def capture_camera_stream(camera:cam_struct, override_write = 0):
     frame = camera.cam.capture_array()
     filename = os.path.join(camera.directory, f"image_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg")
 
-    metadata = camera.cam.capture_metadata()  # Get the latest metadata
-    lens_position = metadata.get("LensPosition", None)  # Extract lens position if available
+    #metadata = camera.cam.capture_metadata()  # Get the latest metadata
+    #lens_position = metadata.get("LensPosition", None)  # Extract lens position if available
 
     
-    # Print lens position if available
-    if lens_position is not None:
-        print(f"Lens Position: {lens_position:.2f}")
-    else:
-        print("Lens Position not available.")
+    # # Print lens position if available
+    # if lens_position is not None:
+    #     print(f"Lens Position: {lens_position:.2f}")
+    # else:
+    #     print("Lens Position not available.")
 
 
 

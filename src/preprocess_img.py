@@ -175,16 +175,16 @@ def perform_centroiding(masked_frame,img_rgb):
     return img_rgb,centroids
 def pythag_centroid(centroid,centroid_list,thresh):
     #thresh is a number of pixels
-    print(f"analyzing centroid {centroid}")
+    # print(f"analyzing centroid {centroid}")
     for cent in centroid_list:
-        print(centroid)
-        print(cent)
-        # cond1 = centroid[0] < cent[0] + thresh
-        # cond2 = centroid[0] > cent[0] - thresh
-        # cond3 = centroid[1] < cent[1] + thresh
-        # cond4 = centroid[1] > cent[1] - thresh
+        # print(centroid)
+        # print(cent)
+        cond1 = centroid[0] < cent[0] + thresh
+        cond2 = centroid[0] > cent[0] - thresh
+        cond3 = centroid[1] < cent[1] + thresh
+        cond4 = centroid[1] > cent[1] - thresh
 
-        print(cond1,cond2,cond3,cond4)
+        #print(cond1,cond2,cond3,cond4)
         if cond1 and cond2 and cond3 and cond4:
             return True
     return False

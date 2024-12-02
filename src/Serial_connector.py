@@ -10,19 +10,24 @@ blueberry_process_queue = Queue()
 
 #TODO write procedure for finding correct port
 
-port = '/dev/ttyACM0'
-if os.path.exists(port):
-    ser = serial.Serial(port, 9600, timeout=1)  # Adjust port and baud rate as necessary
-else:
-    ser = None
+ports = ['/dev/ttyACM1','/dev/ttyACM0','/dev/ttyACM3','/dev/ttyACM4']
+ser = None
+for port in ports:
+    if os.path.exists(port):
+        ser = serial.Serial(port, 9600, timeout=1)  # Adjust port and baud rate as necessary
+
 
 # Initialize variables with timestamps
-motor_speed = 150
+motor_speed = 7.0
 servo_angles = [90, 45, 135]
 shutdown = False
 actuation_times = [1000, 2000, 1500]
 last_update_time = time.monotonic()
 #blueberry_process_queue =[]
+
+def return_ser():
+
+    return ser
 
 def send_data(motor_speed, shutdown, update_time):
     """
@@ -39,6 +44,13 @@ def send_data(motor_speed, shutdown, update_time):
 
     #print("sending motor update packet")
     #print(data_packet)
+def async_serial_comm_read(interval =1):
+    try:
+        while ser.in_waiting > 0:
+            response = ser.readline().decode('utf-8').strip()
+            print(f"Arduino: {response}")
+    except Exception as e:
+        print(f"Error reading response: {e}")
 
 def async_serial_comm_update_vars(interval=1):
     """
@@ -95,7 +107,7 @@ def start_comm_thread(option,interval=1):
     """
     if option ==0:
         print("starting motor update thread")
-        comm_thread = threading.Thread(target=async_serial_comm_update_vars, args=(interval,), daemon=True)
+        comm_thread = threading.Thread(target=async_serial_comm_read, args=(interval,), daemon=True)
     else:
         print("starting blueberry send thread")
         comm_thread = threading.Thread(target=async_serial_comm_blueberry_list, args=(interval,), daemon=True)
@@ -149,7 +161,7 @@ def send_blueberry_list_data(process_queue,motor_speed, shutdown, update_time):
                 data_packet = f"{motor_speed:.3f}|{belt_num}|{ripeness}|{int(shutdown)}|{time1:.3f}|{elapsed_time:.3f}|{motor_update}\n"
                 print("sending blueberry packet")
                 print(data_packet)
-                print(f"queue size is {process_queue.qsize()}")
+                #print(f"queue size is {process_queue.qsize()}")
                 #data_packet = f"{motor_speed}|{belt_num}|{ripeness}|{int(shutdown)}|{time1}|{elapsed_time:.3f}\n"
                 #ser.write(data_packet.encode())
                 ser.write(f"{data_packet}".encode('utf-8'))

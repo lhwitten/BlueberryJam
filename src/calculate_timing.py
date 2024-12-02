@@ -2,10 +2,11 @@
 BELT_DIAMETER = 2 #INCHES
 MOTOR_TOP_SPEED = 7000 #RPM
 MECHANICAL_REDUCTION = 4 #GEAR RATIO
-VISIBLE_BELT_LENGHT = 24 # INCHES
-TOTAL_BELT_LENGTH = 24 # INCHES. THE TOTAL LENGTH OF BELT STARTING FROM VISIBLE AREA UNTIL THE END
+VISIBLE_BELT_LENGHT = 7.25 # INCHES
+TOTAL_BELT_LENGTH = 6.75 # INCHES. THE TOTAL LENGTH OF BELT STARTING FROM VISIBLE AREA UNTIL THE END
 PIPELINE_COMPUTE_INTERVAL = .57 #seconds. the amount of time it takes for the program to run the vision pipeline
-PIXELS_PER_INCH = 2592/3.5 #TODO measure values
+PIXELS_PER_INCH = 2592/3.5 #TODO measure values better
+TOTAL_PIXELS = 640
 
 class Blueberry:
     def __init__(self,ripeness,belt,actuation_time,location_linear,motor_update =0,motor_speed =0):
@@ -19,7 +20,11 @@ class Blueberry:
         self.motor_speed = motor_speed # a value between 0 and 12
 
 def calculate_linear_location(pixel_location):
-    return pixel_location /PIXELS_PER_INCH
+
+    inverse_loc = TOTAL_PIXELS - pixel_location
+    ppi = TOTAL_PIXELS/VISIBLE_BELT_LENGHT
+    return inverse_loc/ppi
+    #return pixel_location /PIXELS_PER_INCH
 
 def calculate_determination_window(motor_throttle:float):
     """
@@ -29,7 +34,7 @@ def calculate_determination_window(motor_throttle:float):
     linear_belt_speed = motor_rpm * 2 * 3.1415926 * (BELT_DIAMETER/2 ) /60 #in/s
     return linear_belt_speed, VISIBLE_BELT_LENGHT/linear_belt_speed #in/s, seconds
 
-def calculate_blueberry_timing(blueberry:Blueberry,motor_throttle,pipeline_compute_interval):
+def calculate_blueberry_timing(blueberry:Blueberry,motor_throttle,pipeline_compute_interval, designated_speed_control = -5.0):
     """
     
     return (to_actuate, actuation timing)
@@ -38,7 +43,10 @@ def calculate_blueberry_timing(blueberry:Blueberry,motor_throttle,pipeline_compu
         blueberry - a blueberry class object containing the number of seconds from this moment in which to actuate
     """
 
-    speed, total_visible_time = calculate_determination_window(motor_throttle)
+    if designated_speed_control < -1:
+        speed, total_visible_time = calculate_determination_window(motor_throttle)
+    else:
+        speed = designated_speed_control
 
     # if total_visible_time < 2*PIPELINE_COMPUTE_INTERVAL:
     #     print("BELT SPEED IS TOO FAST") #TODO REPLACE WITH ERROR
@@ -54,10 +62,13 @@ def calculate_blueberry_timing(blueberry:Blueberry,motor_throttle,pipeline_compu
     #     return 0,blueberry
 
     #TODO DETERMINE IF AN OFFSET IN TIMING IS NEEDED TO FIX ACTUATION TIMING
-    print(f"current location,speed is {current_location},{speed}")
+    #print(f"current location,speed is {current_location},{speed}")
+    if speed > .5:
+        blueberry.actuation_time = (TOTAL_BELT_LENGTH - current_location)/speed #the number of seconds until the end of the belt is reached
+    else:
+        blueberry.actuation_time = 100.0
 
-    blueberry.actuation_time = (TOTAL_BELT_LENGTH - current_location)/speed #the number of seconds until the end of the belt is reached
-
+        return 0,blueberry
     #make this ms at the end
     return 1, blueberry
 

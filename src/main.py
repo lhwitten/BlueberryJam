@@ -13,7 +13,7 @@ from calculate_timing import Blueberry
 
 def main(serial_connected = True):
     capture_interval = .01  # Adjust this for your preferred interval
-
+ 
     #cv2.getBuildInformation()
     first_time =time.time()
     last_process_time = first_time
@@ -28,20 +28,20 @@ def main(serial_connected = True):
 
     if serial_connected:
         #serial communication
-        comm_thread = start_comm_thread(0,interval=1)#0 notes its for variable updates
+        comm_thread = start_comm_thread(0,interval=1)#0 notes its for serial read updates
         comm_thread_berries = start_comm_thread(1,interval=1)
 
     #change variables
-    motor_speed = 200
+    motor_speed = 7.0
     motor_throttle = .05
     servo_angles = [100, 50, 120]
     actuation_times = [1200, 1800, 1600]
     new_shutdown = False
     
     # Update variables in the communication module
-    update_variables(motor_speed, servo_angles, new_shutdown, actuation_times)
-
-    update_only_motor_speed(7.0) # goal 7 in/s
+    #update_variables(motor_speed, servo_angles, new_shutdown, actuation_times)
+    control_speed = 1.5
+    update_only_motor_speed(control_speed) # goal 7 in/s
 
     #a list of known blueberries
     persistent_blueberry_tracker = []
@@ -63,6 +63,7 @@ def main(serial_connected = True):
                 # with open(output_folder + log_file,"a") as f:
                 #     f.write(f"about to grab frame at: {time.time() - first_time}\n")
                 frame = capture_camera_stream(my_cam,-1)
+                # frame = cv.imread("/home/blueberryjam/BlueberryJam/img/recolored_unripe_full1.jpg")
                 time_at_picture = time.time()
                 
                 # Show the video stream (requires display capability)
@@ -97,12 +98,12 @@ def main(serial_connected = True):
                     processed, centroids = perform_centroiding(masked,img_rgb)
                 else:
                     # for multiple masks
-                    masked_imgs,img_rgb,mask_list = apply_multi_bg(masks,frame=crop_img_center(frame, 400,bias = 180))
+                    masked_imgs,img_rgb,mask_list = apply_multi_bg(masks,frame=crop_img_center(frame, 360,bias = 250))
 
-                    cv.imshow("overripe",masked_imgs[0])
-                    cv.imshow("ripe",masked_imgs[1])
-                    cv.imshow("unripe",masked_imgs[2])
-                    cv.imshow("total_mask",masked_imgs[3])
+                    # cv.imshow("overripe",masked_imgs[0])
+                    # cv.imshow("ripe",masked_imgs[1])
+                    # cv.imshow("unripe",masked_imgs[2])
+                    # cv.imshow("total_mask",masked_imgs[3])
                     #cv.waitKey(0)
 
                     # print(masked_imgs)
@@ -157,24 +158,20 @@ def main(serial_connected = True):
                 #     f.write(f"finished frame process at: {time.time() - first_time}\n")
                 
                 #ripeness (unset), belt num, time to actuate (unset), current_location
-                berry = Blueberry(ripeness=0,belt=1,actuation_time=0.0,location_linear=5) #TODO calculate current location
-
-
-
-                
-                blueberry_list = [classify_berry_naive(processed,berry)] #TODO
+                # berry = Blueberry(ripeness=0,belt=1,actuation_time=0.0,location_linear=5) #TODO calculate current location
+                # blueberry_list = [classify_berry_naive(processed,berry)] #TODO
 
                 blueberry_list = []
-                annotation_space = img_rgb.copy()
-                for centroid in centroids:
-                    loc = centroid[1]
-                    berry = Blueberry(ripeness=0,belt=1,actuation_time=0.0,location_linear=abs(calculate_linear_location(loc)) )
-                    berry.ripeness = classify_single(img_rgb,annotation_space,centroid)
-                    if berry.ripeness == -5:
-                        continue
+                # annotation_space = img_rgb.copy()
+                # for centroid in centroids:
+                #     loc = centroid[1]
+                #     berry = Blueberry(ripeness=0,belt=1,actuation_time=0.0,location_linear=abs(calculate_linear_location(loc)) )
+                #     berry.ripeness = classify_single(img_rgb,annotation_space,centroid)
+                #     if berry.ripeness == -5:
+                #         continue
                     
-                    blueberry_list.append(berry)
-                cv.imshow("annotated image",annotation_space)
+                #     blueberry_list.append(berry)
+                # cv.imshow("annotated image",annotation_space)
                 #result = save_annotated_frame(annotation_space)
                 #print(result)
                 if not masks:
@@ -233,18 +230,25 @@ def main(serial_connected = True):
                 
                 send_list = []
                 for blueberry_obj in blueberry_list:
+
+                    #print(blueberry_obj)
                     
                     
-                    valid_send, berry_candidate = (calculate_blueberry_timing(blueberry_obj,motor_throttle,time.time() - time_at_picture))
+                    valid_send, berry_candidate = calculate_blueberry_timing(blueberry_obj,motor_throttle,time.time() - time_at_picture,control_speed)
+                    
+                    #print(berry_candidate)
                     #berry_candidate.actuation_time = 4.0
                     #berry_candidate.ripeness =-1
-                    print(f"berry actuation time is {berry_candidate.actuation_time} and valid send is {valid_send}")
-                    valid_send =1
+                    if valid_send:
+                        print(f"berry actuation time is {berry_candidate.actuation_time} and location (in) is {blueberry_obj.location_linear}") 
+                    #valid_send =1
 
                     if valid_send ==1 and serial_connected:
                         send_list.append(berry_candidate)
-                #print(f"updating queue with: {send_list}")
+                #print(f"updating queue with: {send_list}")q
                 update_blueberry_queue(send_list)
+
+                #print(f"full processing in {time.time() - last_process_time}")
 
                 last_process_time = time.time()  # Update last capture time
 
