@@ -41,6 +41,8 @@ def main(serial_connected = True):
     # Update variables in the communication module
     update_variables(motor_speed, servo_angles, new_shutdown, actuation_times)
 
+    update_only_motor_speed(7.0) # goal 7 in/s
+
     #a list of known blueberries
     persistent_blueberry_tracker = []
 
@@ -107,11 +109,44 @@ def main(serial_connected = True):
                     # print(img_rgb)
                     processed_imgs = []
                     centroid_results = []
+                    existing_centroids = []
                     for i, img in enumerate(mask_list):
+                        # overripe, ripe, underripe - i
                         #cv.waitKey(0)
                         processed, centroids = perform_centroiding(img,img_rgb)
                         processed_imgs.append(processed)
+
+                        curr_mask_centroids = [(k[0], k[1]) for k in centroids] # (cX,cY)           
+                        #print(curr_mask_centroids)     
+                        # print('number of current centroids', len(centroid_results))
+                        # print(centroid_results[0]) if len(centroid_results) >0 else print(len(centroid_results))
+                        #compared centroids to centroid_results (keep in mind which mask should have priority (overripe))
+                        # TODO: check if centroid is too close or the same as an existing centroid in another mask
+                        if len(centroid_results) > 0: # only check duplicates if centroids already exist
+                            #print(centroid_results)
+                            #existing_centroids = [(k[0][0], k[0][1]) for k in centroid_results if k]
+
+
+
+                            #intersections = set(existing_centroids) & set(curr_mask_centroids)
+                            for j in reversed(curr_mask_centroids):
+                                #print(f"existing centroids is {existing_centroids}")
+                                is_close = pythag_centroid(j,existing_centroids,thresh=7)
+
+                                if not is_close:
+                                    continue
+                                #favors centroids already tracked (by extension overripe)
+                                #print(f"popping:{j}")
+                                idx = curr_mask_centroids.index(j)
+                                centroids.pop(idx)
+                                curr_mask_centroids.pop(idx)
+                        existing_centroids.extend(curr_mask_centroids)            
                         centroid_results.append(centroids)
+                    #print(centroid_results)
+                    #cv.waitKey(0)
+                        
+                        
+
 
                 
                 
@@ -140,8 +175,8 @@ def main(serial_connected = True):
                     
                     blueberry_list.append(berry)
                 cv.imshow("annotated image",annotation_space)
-                result = save_annotated_frame(annotation_space)
-                print(result)
+                #result = save_annotated_frame(annotation_space)
+                #print(result)
                 if not masks:
                     annotation_space = img_rgb.copy()
                     for centroid in centroids:
@@ -184,8 +219,8 @@ def main(serial_connected = True):
                             blueberry_list.append(berry)
                     
                     cv.imshow("annotated image",annotation_space)
-                    result = save_annotated_frame(annotation_space)
-                    print(result)
+                    # result = save_annotated_frame(annotation_space)
+                    # print(result)
 
 
                 #blueberry_list = classify_berries(masked,img_rgb,centroids)
@@ -201,8 +236,8 @@ def main(serial_connected = True):
                     
                     
                     valid_send, berry_candidate = (calculate_blueberry_timing(blueberry_obj,motor_throttle,time.time() - time_at_picture))
-                    berry_candidate.actuation_time = 4.0
-                    berry_candidate.ripeness =-1
+                    #berry_candidate.actuation_time = 4.0
+                    #berry_candidate.ripeness =-1
                     print(f"berry actuation time is {berry_candidate.actuation_time} and valid send is {valid_send}")
                     valid_send =1
 
@@ -233,6 +268,6 @@ def main(serial_connected = True):
             ser.close()
 
 if __name__ == "__main__":
-    serial_connected = False
+    serial_connected = True
 
     main(serial_connected)

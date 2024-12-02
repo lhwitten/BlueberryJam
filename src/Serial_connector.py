@@ -83,7 +83,7 @@ def update_blueberry_queue(blueberry_list):
     # print("blueberry queue updated")
     # print(f"blueberry queue is {blueberry_process_queue}")
 
-def update_only_motor_speed(speed_value:int):
+def update_only_motor_speed(speed_value:float):
     #updates only the motor_speed by sending a special blueberry
     blueberry = Blueberry(0,0,0.0,0.0,motor_update=1,motor_speed=speed_value)
     update_blueberry_queue([blueberry])
@@ -143,8 +143,10 @@ def send_blueberry_list_data(process_queue,motor_speed, shutdown, update_time):
                 if blueberry.motor_update ==1:
                     motor_update = 1
                     motor_speed = blueberry.motor_speed
+                else:
+                    motor_speed = 0.0 #goal in/s
 
-                data_packet = f"{motor_speed}|{belt_num}|{ripeness}|{int(shutdown)}|{time1:.3f}|{elapsed_time:.3f}|{motor_update}\n"
+                data_packet = f"{motor_speed:.3f}|{belt_num}|{ripeness}|{int(shutdown)}|{time1:.3f}|{elapsed_time:.3f}|{motor_update}\n"
                 print("sending blueberry packet")
                 print(data_packet)
                 print(f"queue size is {process_queue.qsize()}")
