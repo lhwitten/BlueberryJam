@@ -8,11 +8,15 @@ PIPELINE_COMPUTE_INTERVAL = .57 #seconds. the amount of time it takes for the pr
 PIXELS_PER_INCH = 2592/3.5 #TODO measure values
 
 class Blueberry:
-    def __init__(self,ripeness,belt,actuation_time,location_linear):
+    def __init__(self,ripeness,belt,actuation_time,location_linear,motor_update =0,motor_speed =0):
         self.ripeness = ripeness # -1 - unripe, 0 unclassifies, 1 ripe, 2 overripe
         self.belt = belt # 1 through 3
         self.actuation_time = actuation_time #float: number of seconds til actuation time
-        self.location_linear = location_linear #float: num of inches along the belt (as measured by the visible belt length)
+        self.location_linear:float = location_linear #float: num of inches along the belt (as measured by the visible belt length)
+
+        #only for motor updates
+        self.motor_update = motor_update #0 or 1, usually 0
+        self.motor_speed = motor_speed # a value between 0 and 12
 
 def calculate_linear_location(pixel_location):
     return pixel_location /PIXELS_PER_INCH

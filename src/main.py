@@ -75,8 +75,12 @@ def main(serial_connected = True):
                 #mask = [(0, 102, 138), (95, 140, 150)] #mask for just ripe
                 #mask = [(0, 70, 150), (95, 140, 160)] #mask for just green
                 #user_input = input("input mask")
+                masks = []
+                #comment this out otherwise
+                #overripe, ripe, underripe(#TODO)
+                #masks = [[(0, 70, 100), (95, 140, 137)],[(0, 102, 138), (95, 140, 150)],[(0, 70, 100), (95, 140, 160)]]
+                masks = [[(20, 0, 0), (180, 85, 65)],[(0, 60, 0), (38, 145, 100)],[(0, 135, 0), (180, 255, 150)]]
 
-                # masks = [[(0, 70, 100), (95, 140, 137)],[(0, 102, 138), (95, 140, 150)],[(0, 70, 100), (95, 140, 160)]]
                 
                 # with open(output_folder + log_file,"a") as f:
 
@@ -84,20 +88,32 @@ def main(serial_connected = True):
 
                 #processed = preprocess_image(mask,path=None,frame=None)
                 #processed = preprocess_image(mask,path=None,frame=frame)
+                frame = cv.rotate(frame,cv.ROTATE_90_COUNTERCLOCKWISE)
                 
-                
-                masked,img_rgb = perform_backgrounding(mask,frame=crop_img_center(frame, 1000,bias = -300))
-                
-                # for multiple masks
-                # masked_imgs,img_rgb = apply_multi_bg(masks,frame=crop_img_center(frame, 1000,bias = -300))
-                # processed_imgs = []
-                # centroid_results = []
-                # for i, img in enumerate(masked_imgs):
-                #     processed, centroids = perform_centroiding(img,img_rgb)
-                #     processed_imgs.append(processed)
-                #     centroid_results.append(centroids)
+                if not masks:
+                    masked,img_rgb = perform_backgrounding(mask,frame=crop_img_center(frame, 400,bias = 180))
+                    processed, centroids = perform_centroiding(masked,img_rgb)
+                else:
+                    # for multiple masks
+                    masked_imgs,img_rgb,mask_list = apply_multi_bg(masks,frame=crop_img_center(frame, 400,bias = 180))
 
-                processed, centroids = perform_centroiding(masked,img_rgb)
+                    cv.imshow("overripe",masked_imgs[0])
+                    cv.imshow("ripe",masked_imgs[1])
+                    cv.imshow("unripe",masked_imgs[2])
+                    cv.imshow("total_mask",masked_imgs[3])
+                    #cv.waitKey(0)
+
+                    # print(masked_imgs)
+                    # print(img_rgb)
+                    processed_imgs = []
+                    centroid_results = []
+                    for i, img in enumerate(mask_list):
+                        #cv.waitKey(0)
+                        processed, centroids = perform_centroiding(img,img_rgb)
+                        processed_imgs.append(processed)
+                        centroid_results.append(centroids)
+
+                
                 
                 # cv2.imshow("Processed Stream", processed)
 
@@ -126,6 +142,52 @@ def main(serial_connected = True):
                 cv.imshow("annotated image",annotation_space)
                 result = save_annotated_frame(annotation_space)
                 print(result)
+                if not masks:
+                    annotation_space = img_rgb.copy()
+                    for centroid in centroids:
+                        loc = centroid[1]
+                        berry = Blueberry(ripeness=0,belt=1,actuation_time=0.0,location_linear=abs(calculate_linear_location(loc)) )
+                        berry.ripeness = classify_single(img_rgb,annotation_space,centroid)
+                        if berry.ripeness == -5:
+                            continue
+                        
+                        blueberry_list.append(berry)
+                    cv.imshow("annotated image",annotation_space)
+                else:
+                    annotation_space = img_rgb.copy()
+                    for i,centroid_list in enumerate(centroid_results):
+
+                        for centroid in centroid_list:
+                            loc = centroid[1]
+                            berry = Blueberry(ripeness=0,belt=1,actuation_time=0.0,location_linear=abs(calculate_linear_location(loc)) )
+                            #overripe, ripe, underripe
+                            if i ==0:#ovveripe
+                                berry.ripeness = 2
+                                similarities = [0.0,1.0,0.0] #ripe, overripe, underripe
+                                is_ripe =1
+                            elif i ==1: #ripe
+                                berry.ripeness = 1
+                                similarities = [1.0,0.0,0.0]
+                                is_ripe = 0
+                            elif i ==2: #underripe
+                                berry.ripeness = -1
+                                similarities = [0.0,0.0,1.0]
+                                is_ripe = 2
+                            else:
+                                continue #for full masked image
+
+                            #berry.ripeness = classify_single(img_rgb,annotation_space,centroid)
+                            # if berry.ripeness == -5:
+                            #     continue
+                            annotate_and_show(annotation_space,centroid,similarities,is_ripe)
+                        
+                            blueberry_list.append(berry)
+                    
+                    cv.imshow("annotated image",annotation_space)
+                    result = save_annotated_frame(annotation_space)
+                    print(result)
+
+
                 #blueberry_list = classify_berries(masked,img_rgb,centroids)
 
                 #update the tracker with expected blueberry locations

@@ -5,7 +5,7 @@ import time
 import os
 import copy
 from queue import Queue
-
+from calculate_timing import Blueberry
 blueberry_process_queue = Queue()
 
 #TODO write procedure for finding correct port
@@ -83,6 +83,11 @@ def update_blueberry_queue(blueberry_list):
     # print("blueberry queue updated")
     # print(f"blueberry queue is {blueberry_process_queue}")
 
+def update_only_motor_speed(speed_value:int):
+    #updates only the motor_speed by sending a special blueberry
+    blueberry = Blueberry(0,0,0.0,0.0,motor_update=1,motor_speed=speed_value)
+    update_blueberry_queue([blueberry])
+
 
 def start_comm_thread(option,interval=1):
     """
@@ -135,7 +140,11 @@ def send_blueberry_list_data(process_queue,motor_speed, shutdown, update_time):
                 ripeness= blueberry.ripeness
                 motor_update =0
 
-                data_packet = f"{motor_speed:.3f}|{belt_num}|{ripeness}|{int(shutdown)}|{time1:.3f}|{elapsed_time:.3f}|{motor_update}\n"
+                if blueberry.motor_update ==1:
+                    motor_update = 1
+                    motor_speed = blueberry.motor_speed
+
+                data_packet = f"{motor_speed}|{belt_num}|{ripeness}|{int(shutdown)}|{time1:.3f}|{elapsed_time:.3f}|{motor_update}\n"
                 print("sending blueberry packet")
                 print(data_packet)
                 print(f"queue size is {process_queue.qsize()}")
