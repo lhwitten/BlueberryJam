@@ -124,7 +124,8 @@ def main(serial_connected = True):
                     
                     blueberry_list.append(berry)
                 cv.imshow("annotated image",annotation_space)
-
+                result = save_annotated_frame(annotation_space)
+                print(result)
                 #blueberry_list = classify_berries(masked,img_rgb,centroids)
 
                 #update the tracker with expected blueberry locations

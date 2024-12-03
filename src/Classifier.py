@@ -1,3 +1,5 @@
+import os
+from datetime import datetime
 import cv2 as cv
 import numpy as np
 from ripe_avg_val import ripe_avg_val
@@ -109,3 +111,24 @@ def annotate_and_show(img_copy,centroid,similarity,ripeness):
 #         cv.putText(annotation_frame,text, position, cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
     
 #     cv.imshow("Annotated frame", annotation_frame)
+
+def save_annotated_frame(frame, save_dir="/home/blueberryjam/BlueberryJam/img/annotations/"):
+    """
+    Save an annotated frame to a local location.
+
+    frame: frame to save
+
+    save_dir: directory to which to save frame -- default is img/annotations
+
+    Returns 
+    - 0 on success 
+    - -1 on failure
+
+    """
+    filename = os.path.join(save_dir, f"annotation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg")
+    result = cv.imwrite(filename, frame)
+    if result:
+        print(f"Image saved as {filename}")
+    else:
+        print(f"Failed to save image.")
+    return 0 if result else -1
