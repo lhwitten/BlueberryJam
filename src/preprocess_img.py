@@ -147,7 +147,10 @@ def perform_centroiding(masked_frame,img_rgb):
                 cX = int(M["m10"] / M["m00"]) 
                 cY = int(M["m01"] / M["m00"])
 # put the centroid on the RGB image
+                # TODO: check if centroid is too close or the same as an existing centroid
                 
+                # centroid_coords = {(i[0], i[1]) for i in centroids}
+                # if (cX, cY) not in centroid_coords:    
 
                 (circle_x,circle_y), radius = cv.minEnclosingCircle(contour)
 
