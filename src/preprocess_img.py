@@ -146,11 +146,7 @@ def perform_centroiding(masked_frame,img_rgb):
             if M["m00"] != 0:  # avoid divide by zero error
                 cX = int(M["m10"] / M["m00"]) 
                 cY = int(M["m01"] / M["m00"])
-# put the centroid on the RGB image
-                # TODO: check if centroid is too close or the same as an existing centroid
-                
-                # centroid_coords = {(i[0], i[1]) for i in centroids}
-                # if (cX, cY) not in centroid_coords:    
+# put the centroid on the RGB image  
 
                 (circle_x,circle_y), radius = cv.minEnclosingCircle(contour)
 
@@ -177,7 +173,21 @@ def perform_centroiding(masked_frame,img_rgb):
     # # print("processing got here 5")
 
     return img_rgb,centroids
+def pythag_centroid(centroid,centroid_list,thresh):
+    #thresh is a number of pixels
+    print(f"analyzing centroid {centroid}")
+    for cent in centroid_list:
+        print(centroid)
+        print(cent)
+        # cond1 = centroid[0] < cent[0] + thresh
+        # cond2 = centroid[0] > cent[0] - thresh
+        # cond3 = centroid[1] < cent[1] + thresh
+        # cond4 = centroid[1] > cent[1] - thresh
 
+        print(cond1,cond2,cond3,cond4)
+        if cond1 and cond2 and cond3 and cond4:
+            return True
+    return False
 def crop_img_center(img_rgb, crop_width,bias=0):
 # get centroid'd image in RGB
 # convert to LUV
