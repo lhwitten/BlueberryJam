@@ -19,6 +19,20 @@ class Blueberry:
         self.motor_update = motor_update #0 or 1, usually 0
         self.motor_speed = motor_speed # a value between 0 and 12
 
+def blueberry_positions_to_string(blueberries):
+    """
+    Takes a list of Blueberry objects and returns a string 
+    with their centroid positions listed out.
+
+    Assumes each Blueberry object has a 'centroid' attribute 
+    that is a tuple (x, y).
+    """
+    positions = []
+    for berry in blueberries:
+        location = berry.location_linear
+        positions.append(f"{location}")
+    return ", ".join(positions)
+
 def calculate_linear_location(pixel_location):
 
     inverse_loc = TOTAL_PIXELS - pixel_location
@@ -63,8 +77,13 @@ def calculate_blueberry_timing(blueberry:Blueberry,motor_throttle,pipeline_compu
 
     #TODO DETERMINE IF AN OFFSET IN TIMING IS NEEDED TO FIX ACTUATION TIMING
     #print(f"current location,speed is {current_location},{speed}")
+
+    solenoid_placement_adj_inches = -.2 #
+
+    firing_placement = TOTAL_BELT_LENGTH + solenoid_placement_adj_inches
+
     if speed > .5:
-        blueberry.actuation_time = (TOTAL_BELT_LENGTH - current_location)/speed #the number of seconds until the end of the belt is reached
+        blueberry.actuation_time = (firing_placement - current_location)/speed #the number of seconds until the end of the belt is reached
     else:
         blueberry.actuation_time = 100.0
 
@@ -72,11 +91,14 @@ def calculate_blueberry_timing(blueberry:Blueberry,motor_throttle,pipeline_compu
     #make this ms at the end
     return 1, blueberry
 
-def update_persistence_tracker(tracked_blueberries:list[Blueberry],motor_throttle,time_interval):
+def update_persistence_tracker(tracked_blueberries:list[Blueberry],motor_throttle,time_interval,control_speed= -5.0):
     """
     update every blueberry in the list based on the belt speed and time
     """
-    speed, total_visible_time = calculate_determination_window(motor_throttle)
+    if control_speed > -1:
+        speed = control_speed
+    else:
+        speed, total_visible_time = calculate_determination_window(motor_throttle)
 
     moved_distance = speed*time_interval
     num_berries = len(tracked_blueberries)
@@ -110,7 +132,7 @@ def compare_and_update_tracker(tracked_blueberries:list[Blueberry],found_berries
 def compare_single_berry_to_tracker(tracked_blueberries:list[Blueberry],to_compare:Blueberry):
 
     #closeness threshold
-    thresh = .2 #inches
+    thresh = .1 #inches
     in_list = False
     for tracked in tracked_blueberries:
 

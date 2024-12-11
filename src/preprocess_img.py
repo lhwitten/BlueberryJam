@@ -2,6 +2,7 @@ import cv2 as cv
 import numpy as np
 from matplotlib import colors
 from random import randint
+import math
 # IMG_PATH = 'R_06.11'
 # MASK = [(10, 70, 100), (250, 130, 250)] # [low, high]
 
@@ -161,9 +162,9 @@ def perform_centroiding(masked_frame,img_rgb):
                 width = int(2*radius)
                 height = width
                 box = [x_min,y_min,width,height]
-                cv.circle(img_rgb, (cX, cY), 5, (255, 0, 0), -1)  # Blue dot at the centroid
-                cv.putText(img_rgb, "Centroid", (cX - 20, cY - 10), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 1)
-                cv.rectangle(img_rgb,(x_min,y_min),(x_min + width,y_min + height),(0,255,0),2)
+                # cv.circle(img_rgb, (cX, cY), 5, (255, 0, 0), -1)  # Blue dot at the centroid
+                # cv.putText(img_rgb, "Centroid", (cX - 20, cY - 10), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 1)
+                # cv.rectangle(img_rgb,(x_min,y_min),(x_min + width,y_min + height),(0,255,0),2)
 
                 centroids.append((cX,cY,box))
 
@@ -186,6 +187,14 @@ def pythag_centroid(centroid,centroid_list,thresh):
 
         #print(cond1,cond2,cond3,cond4)
         if cond1 and cond2 and cond3 and cond4:
+            return True
+    return False
+
+def pythag_centroid_euclid(centroid, centroid_list, thresh):
+    cx, cy = centroid
+    for (ex, ey) in centroid_list:
+        distance = math.sqrt((cx - ex)**2 + (cy - ey)**2)
+        if distance < thresh:
             return True
     return False
 def crop_img_center(img_rgb, crop_width,bias=0):

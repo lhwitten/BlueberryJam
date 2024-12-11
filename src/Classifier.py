@@ -81,7 +81,7 @@ def classify_single(img_rgb,img_copy, single_centroid):
    return is_ripe
 
 def annotate_and_show(img_copy,centroid,similarity,ripeness):
-    #[x_min,y_min,width,height]
+    
     if ripeness == 0:
         text = f"ripe,         :{round(similarity[0],3)}"
         subtext = f"R:{round(similarity[0],3)}"
@@ -106,6 +106,13 @@ def annotate_and_show(img_copy,centroid,similarity,ripeness):
     cv.putText(img_copy,subtext, offset_pos, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
     cv.putText(img_copy,sub2, offset_pos2, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
     cv.putText(img_copy,sub3, offset_pos3, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
+    [x_min,y_min,width,height] = centroid[2]
+    cX = centroid[0]
+    cY = centroid[1]
+    cv.circle(img_copy, (cX, cY), 5, (255, 0, 0), -1)  # Blue dot at the centroid
+    cv.putText(img_copy, "Centroid", (cX - 20, cY - 10), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 1)
+    cv.rectangle(img_copy,(x_min,y_min),(x_min + width,y_min + height),(0,255,0),2)
+
     #cv.imshow("Annotated frame", annotation_frame)
 
 # def annotate_and_show(img_rgb,berry_list):

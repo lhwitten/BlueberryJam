@@ -25,6 +25,15 @@ actuation_times = [1000, 2000, 1500]
 last_update_time = time.monotonic()
 #blueberry_process_queue =[]
 
+def ser_reconnect():
+    ports = ['/dev/ttyACM1','/dev/ttyACM0','/dev/ttyACM3','/dev/ttyACM4']
+    new_ser = None
+    for port in ports:
+        if os.path.exists(port):
+            new_ser = serial.Serial(port, 9600, timeout=1)  # Adjust port and baud rate as necessary
+    
+    return new_ser
+
 def return_ser():
 
     return ser
@@ -142,6 +151,8 @@ def send_blueberry_list_data(process_queue,motor_speed, shutdown, update_time):
     #     #data_packet = f"{motor_speed}|{belt_num}|{ripeness}|{int(shutdown)}|{time1}|{elapsed_time:.3f}\n"
     #     ser.write(data_packet.encode())
 
+    elapsed_delta = 0.0
+
     if not process_queue.empty():
             while not process_queue.empty():
                 blueberry = process_queue.get()  # Thread-safe dequeue
@@ -158,13 +169,21 @@ def send_blueberry_list_data(process_queue,motor_speed, shutdown, update_time):
                 else:
                     motor_speed = 0.0 #goal in/s
 
-                data_packet = f"{motor_speed:.3f}|{belt_num}|{ripeness}|{int(shutdown)}|{time1:.3f}|{elapsed_time:.3f}|{motor_update}\n"
+                full_elapsed = elapsed_time + elapsed_delta
+
+                data_packet = f"{motor_speed:.3f}|{belt_num}|{ripeness}|{int(shutdown)}|{time1:.3f}|{full_elapsed:.3f}|{motor_update}\n"
                 print("sending blueberry packet")
                 print(data_packet)
                 #print(f"queue size is {process_queue.qsize()}")
                 #data_packet = f"{motor_speed}|{belt_num}|{ripeness}|{int(shutdown)}|{time1}|{elapsed_time:.3f}\n"
                 #ser.write(data_packet.encode())
-                ser.write(f"{data_packet}".encode('utf-8'))
+                try:
+                    ser.write(f"{data_packet}".encode('utf-8'))
+                except:
+                    ser = ser_reconnect()
+                    print("serial disconnect and reconnect")
+                time.sleep(.01)
+                elapsed_delta += .01
 
 
 
