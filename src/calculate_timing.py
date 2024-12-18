@@ -1,12 +1,16 @@
 
-BELT_DIAMETER = 2 #INCHES
+BELT_DIAMETER = 2.08 #INCHES
 MOTOR_TOP_SPEED = 7000 #RPM
 MECHANICAL_REDUCTION = 4 #GEAR RATIO
-VISIBLE_BELT_LENGHT = 7.25 # INCHES
-TOTAL_BELT_LENGTH = 6.75 # INCHES. THE TOTAL LENGTH OF BELT STARTING FROM VISIBLE AREA UNTIL THE END
+VISIBLE_BELT_LENGHT = 6 # INCHES
+#TOTAL_BELT_LENGTH = 6.75 # INCHES. THE TOTAL LENGTH OF BELT STARTING FROM VISIBLE AREA UNTIL THE END
+SOL_1_POS = 4.4
+SOL_2_POS = 8.35
 PIPELINE_COMPUTE_INTERVAL = .57 #seconds. the amount of time it takes for the program to run the vision pipeline
 PIXELS_PER_INCH = 2592/3.5 #TODO measure values better
 TOTAL_PIXELS = 640
+#TOTAL_PIXELS = 480
+PPI_EXTERNAL = TOTAL_PIXELS/VISIBLE_BELT_LENGHT
 
 class Blueberry:
     def __init__(self,ripeness,belt,actuation_time,location_linear,motor_update =0,motor_speed =0):
@@ -62,9 +66,15 @@ def calculate_blueberry_timing(blueberry:Blueberry,motor_throttle,pipeline_compu
     else:
         speed = designated_speed_control
 
+
     # if total_visible_time < 2*PIPELINE_COMPUTE_INTERVAL:
     #     print("BELT SPEED IS TOO FAST") #TODO REPLACE WITH ERROR
     #     return 0,blueberry
+
+
+    speed_correction = 1.0 #accounts for multiplicative factors
+    speed*=speed_correction
+
 
     #how far along the belt the blueberry was at time of classification
     lag_distance = speed*pipeline_compute_interval 
@@ -78,12 +88,19 @@ def calculate_blueberry_timing(blueberry:Blueberry,motor_throttle,pipeline_compu
     #TODO DETERMINE IF AN OFFSET IN TIMING IS NEEDED TO FIX ACTUATION TIMING
     #print(f"current location,speed is {current_location},{speed}")
 
-    solenoid_placement_adj_inches = -.2 #
+    solenoid_placement_adj_inches = 0.0 #
 
-    firing_placement = TOTAL_BELT_LENGTH + solenoid_placement_adj_inches
+    if blueberry.ripeness == -1:
+        cam_start_to_solenoid = SOL_1_POS #underripe position
+    else:
+        cam_start_to_solenoid = SOL_2_POS #underripe position
+
+    firing_placement = cam_start_to_solenoid + solenoid_placement_adj_inches
+
+    curr_location_scaling_factor = 1.0
 
     if speed > .5:
-        blueberry.actuation_time = (firing_placement - current_location)/speed #the number of seconds until the end of the belt is reached
+        blueberry.actuation_time = (firing_placement - current_location*curr_location_scaling_factor)/speed #the number of seconds until the end of the belt is reached
     else:
         blueberry.actuation_time = 100.0
 

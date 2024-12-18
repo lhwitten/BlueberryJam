@@ -11,6 +11,7 @@ blueberry_process_queue = Queue()
 #TODO write procedure for finding correct port
 
 ports = ['/dev/ttyACM1','/dev/ttyACM0','/dev/ttyACM3','/dev/ttyACM4']
+global ser
 ser = None
 for port in ports:
     if os.path.exists(port):
@@ -129,6 +130,7 @@ def send_blueberry_list_data(process_queue,motor_speed, shutdown, update_time):
     """
     Sends a data packet to the Arduino with timing information.
     """
+    global ser
     elapsed_time = time.monotonic() - update_time
     #print("running send blueberry list data")
     #print(process_queue)
@@ -168,20 +170,28 @@ def send_blueberry_list_data(process_queue,motor_speed, shutdown, update_time):
                     motor_speed = blueberry.motor_speed
                 else:
                     motor_speed = 0.0 #goal in/s
+                success = False
+                while not success:
+                    full_elapsed = elapsed_time + elapsed_delta
 
-                full_elapsed = elapsed_time + elapsed_delta
+                    data_packet = f"{motor_speed:.3f}|{belt_num}|{ripeness}|{int(shutdown)}|{time1:.3f}|{full_elapsed:.3f}|{motor_update}\n"
+                    print("sending blueberry packet")
+                    print(data_packet)
+                    #print(f"queue size is {process_queue.qsize()}")
+                    #data_packet = f"{motor_speed}|{belt_num}|{ripeness}|{int(shutdown)}|{time1}|{elapsed_time:.3f}\n"
+                    #ser.write(data_packet.encode())
 
-                data_packet = f"{motor_speed:.3f}|{belt_num}|{ripeness}|{int(shutdown)}|{time1:.3f}|{full_elapsed:.3f}|{motor_update}\n"
-                print("sending blueberry packet")
-                print(data_packet)
-                #print(f"queue size is {process_queue.qsize()}")
-                #data_packet = f"{motor_speed}|{belt_num}|{ripeness}|{int(shutdown)}|{time1}|{elapsed_time:.3f}\n"
-                #ser.write(data_packet.encode())
-                try:
-                    ser.write(f"{data_packet}".encode('utf-8'))
-                except:
-                    ser = ser_reconnect()
-                    print("serial disconnect and reconnect")
+                    
+                    try:
+                        ser.write(f"{data_packet}".encode('utf-8'))
+                        success = True
+                    except:
+                        reconnect_start = time.monotonic()
+                        ser = ser_reconnect()
+                        reconnect_end = time.monotonic()
+                        reconnect_delta = reconnect_end - reconnect_start
+                        elapsed_delta +=reconnect_delta
+                        print("serial disconnect and reconnect")
                 time.sleep(.01)
                 elapsed_delta += .01
 

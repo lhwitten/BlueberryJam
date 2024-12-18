@@ -5,6 +5,7 @@ from Classifier import *
 from preprocess_img import *
 from calculate_timing import calculate_blueberry_timing
 from calculate_timing import *
+from buttons_screen import *
 import serial
 import threading
 import time
@@ -27,6 +28,9 @@ def main(serial_connected = True):
     #     f.write(f"Program Start at: {time.time() - first_time}\n capture interval is {capture_interval}\n")
 
     my_cam = initialize_camera_stream()
+    
+    button_thread = start_button_thread()
+    lcd_init()
 
     if serial_connected:
         #serial communication
@@ -43,11 +47,25 @@ def main(serial_connected = True):
     # Update variables in the communication module
     #update_variables(motor_speed, servo_angles, new_shutdown, actuation_times)
     control_speed = 2.0
-    update_only_motor_speed(control_speed) # goal 7 in/s
+    stop_speed = -5.0
+    current_error = 0
+    update_only_motor_speed(stop_speed) # goal 7 in/s
+    #wait for start
+
+    construct_and_send_LCD(control_speed,True,current_error)
+    new_stop_press, new_start_press = False,False
+    while not new_start_press:
+        new_start_press, new_stop_press = were_buttons_pressed()
+        time.sleep(.05)
+    update_only_motor_speed(control_speed)
+    reset_buttons()
+    time.sleep(.5)
+
 
     #a list of known blueberries
     persistent_blueberry_tracker = []
 
+    construct_and_send_LCD(control_speed,False,current_error)
 
 
     try:
@@ -57,7 +75,22 @@ def main(serial_connected = True):
             if 1 ==0:
                 update_variables(motor_speed, new_shutdown)
             
-            update_only_motor_speed(control_speed)
+            #start and stop based on buttons
+            new_start_press, new_stop_press = were_buttons_pressed()
+        
+            if not new_stop_press:
+                update_only_motor_speed(control_speed)
+            else:   
+                update_only_motor_speed(stop_speed)
+                construct_and_send_LCD(control_speed,True,current_error)
+                while not new_start_press:
+                    new_start_press, new_stop_press = were_buttons_pressed()
+                    time.sleep(.05)
+                update_only_motor_speed(control_speed)
+                construct_and_send_LCD(control_speed,False,current_error)
+                reset_buttons()
+                time.sleep(.5)
+            reset_buttons()
 
 
             current_time = time.time()
@@ -95,17 +128,17 @@ def main(serial_connected = True):
 
                 #processed = preprocess_image(mask,path=None,frame=None)
                 #processed = preprocess_image(mask,path=None,frame=frame)
-                frame = cv.rotate(frame,cv.ROTATE_90_COUNTERCLOCKWISE)
+                frame = cv.rotate(frame,cv.ROTATE_90_CLOCKWISE)
                 
                 if not masks:
-                    masked,img_rgb = perform_backgrounding(mask,frame=crop_img_center(frame, 400,bias = 180))
+                    masked,img_rgb = perform_backgrounding(mask,frame=crop_img_center(frame, 450,bias = 140))
                     processed, centroids = perform_centroiding(masked,img_rgb)
                 else:
                     # for multiple masks
-                    masked_imgs,img_rgb,mask_list = apply_multi_bg(masks,frame=crop_img_center(frame, 360,bias = 250))
+                    masked_imgs,img_rgb,mask_list = apply_multi_bg(masks,frame=crop_img_center(frame, 225,bias = 42))
 
-                    # cv.imshow("overripe",masked_imgs[0])
-                    # cv.imshow("ripe",masked_imgs[1])
+                    cv.imshow("overripe",masked_imgs[0])
+                    cv.imshow("ripe",masked_imgs[1])
                     # cv.imshow("unripe",masked_imgs[2])
                     # cv.imshow("total_mask",masked_imgs[3])
                     #cv.waitKey(0)
@@ -254,12 +287,12 @@ def main(serial_connected = True):
 
                     #print(blueberry_obj)
                     
-                    
+                    blueberry_obj.ripeness =-1
                     valid_send, berry_candidate = calculate_blueberry_timing(blueberry_obj,motor_throttle,time.time() - time_at_picture,control_speed)
                     
                     #print(berry_candidate)
                     #berry_candidate.actuation_time = 4.0
-                    berry_candidate.ripeness =-1
+                    
                     if valid_send:
                         print(f"berry actuation time is {berry_candidate.actuation_time} and location (in) is {blueberry_obj.location_linear}") 
                     #valid_send =1
@@ -286,11 +319,16 @@ def main(serial_connected = True):
         end_camera_stream(my_cam)
         #serial communication shutdown
         shutdown = True
+        update_only_motor_speed(stop_speed)
+        construct_and_send_LCD(control_speed,True,current_error)
+        button_thread.join()
+        cleanup_gpio()
 
         if serial_connected:
             # comm_thread.join()
             comm_thread_berries.join()
             ser.close()
+            
 
 if __name__ == "__main__":
     serial_connected = True

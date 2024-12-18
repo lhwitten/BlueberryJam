@@ -20,9 +20,15 @@ def initialize_camera_stream(save_output =0):
 
     #configuration stuff
     camera_config = picam2.create_preview_configuration()
-    # camera_config = picam2.create_video_configuration()
+
+    #camera_config = picam2.create_preview_configuration(main={"size":(64,480),"format": "XBGR8888"})
+
+
+    #camera_config = picam2.create_video_configuration()
     # camera_config["size"] = (1280, 720)  # Adjust as needed
     # camera_config["format"] = "RGB888"  # Select a format compatible with your CV pipeline
+
+    #camera_config["size"] = (480, 480)  # Adjust as needed
     picam2.configure(camera_config)
 
 

@@ -141,7 +141,7 @@ def perform_centroiding(masked_frame,img_rgb):
     for contour in contours:
         # print(cv.contourArea(contour))
         contour_area = cv.contourArea(contour) #original just asks contour to be larger than 500
-        if contour_area >= 1300 and contour_area < 13000: # only calculate centroids for contours larger than 500px
+        if contour_area >= 1000 and contour_area < 13000: # only calculate centroids for contours larger than 500px
 # calculate moments of the contour
             M = cv.moments(contour)
             if M["m00"] != 0:  # avoid divide by zero error
@@ -162,11 +162,14 @@ def perform_centroiding(masked_frame,img_rgb):
                 width = int(2*radius)
                 height = width
                 box = [x_min,y_min,width,height]
+
+                score = contour_area/ (math.pi * radius*radius)
+
                 # cv.circle(img_rgb, (cX, cY), 5, (255, 0, 0), -1)  # Blue dot at the centroid
                 # cv.putText(img_rgb, "Centroid", (cX - 20, cY - 10), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 1)
                 # cv.rectangle(img_rgb,(x_min,y_min),(x_min + width,y_min + height),(0,255,0),2)
 
-                centroids.append((cX,cY,box))
+                centroids.append((cX,cY,box,score))
 
 # show the result with centroids marked
     # cv.imshow("Centroids in RGB Image", img_rgb)
