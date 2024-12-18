@@ -15,29 +15,35 @@ CircularBuffer<float, arraySize> sol2_u, sol2_o;
 bool sol30_waiting, sol31_waiting;
 CircularBuffer<float, arraySize> sol3_u, sol3_o;
 
-const int SOL10_PIN = 11;
-const int SOL11_PIN = 12;
+const int SOL10_PIN = 7;
+const int SOL11_PIN = 6;
 
-bool solenoid_activated;
-const int SOLENOID_ON = 20; //ms
-float last_sol_time;
+bool solenoid_activated_10;
+bool solenoid_activated_11;
+
+const int SOLENOID_ON = 400; //ms
+float last_sol_time_10;
+float last_sol_time_11;
 
 //For Motor
-#define DR_MOTOR_ENA 6
-#define DR_MOTOR_IN1 7
-#define DR_MOTOR_IN2 8
+#define DR_MOTOR_ENA 10
+#define DR_MOTOR_IN1 8
+#define DR_MOTOR_IN2 9
+const int vibeMotorSwitch = 5; // only turn on if you want motor controller off
+bool motorStop = true;
 
 ///Encoder
 // Define the pins for the encoder
 const int encoderPinA = 2; // Connect A to pin 2
 const int encoderPinB = 3; // Connect B to pin 3
+const int encoderSwitchOff = 4;// only send high if you want encoder off
 
 volatile int encoderPosition = 0; // Variable to store encoder position
 volatile int lastEncoded = 0;     // To keep track of the last encoded value
 
 volatile bool encoderUpdated = false; // Flag to indicate an update to encoder
 
-CircularBuffer<float, 7> speedBuffer; // Circular buffer for 4 speed samples
+CircularBuffer<float, 12> speedBuffer; // Circular buffer for 4 speed samples
 
 unsigned long lastEncodeTime = 0;          // Last time the speed was calculated
 int lastPosition = 0;                // Encoder position during the last check
@@ -47,13 +53,13 @@ const int posPerRev = 2381; // the number of encoder positions per revolution
 
 // Speed control
 unsigned long lastControlTime = 0; // Last time the control was applied
-float goalInchesPerSec = 7.0; // Desired speed in inches per second
-int currentPWM = 120;         // Starting PWM value
-const int pwmStep = 3;        // Step size for increasing/decreasing PWM
-const int maxPWM = 160;       // Maximum PWM value
+float goalInchesPerSec = 2.0; // Desired speed in inches per second
+int currentPWM = 190;         // Starting PWM value
+const int pwmStep = 2;        // Step size for increasing/decreasing PWM
+const int maxPWM = 255;       // Maximum PWM value
 const int minPWM = 0;         // Minimum PWM value
-const float BELT_RAD_IN = 0.8464567; // Belt radius in inches
-const int controlInterval = 50;   // Control interval in milliseconds
+const float BELT_RAD_IN = 1.0445; // Belt radius in inches
+const int controlInterval = 150;   // Control interval in milliseconds
 
 //program start
 void setup() {
@@ -70,21 +76,27 @@ void setup() {
     
     //first time
     first_time = millis();
-    last_sol_time = first_time;
-    solenoid_activated = false;
+    last_sol_time_10 = first_time;
+    last_sol_time_11 = first_time;
+    
+    solenoid_activated_10 = false;
+    solenoid_activated_11 = false;
 
     //motor
     pinMode(DR_MOTOR_ENA, OUTPUT);
     pinMode(DR_MOTOR_IN1, OUTPUT);
     pinMode(DR_MOTOR_IN2, OUTPUT);
+    pinMode(vibeMotorSwitch, OUTPUT);
 
     analogWrite(DR_MOTOR_ENA, 0);//120 is max
-    digitalWrite(DR_MOTOR_IN1, HIGH);
-    digitalWrite(DR_MOTOR_IN2, LOW);
+    //switch this to change motor direction
+    digitalWrite(DR_MOTOR_IN1, LOW);
+    digitalWrite(DR_MOTOR_IN2, HIGH);
+    digitalWrite(vibeMotorSwitch, LOW);
 
     //Encoder
-    pinMode(encoderPinA, INPUT); // Set pinA as input with pull-up resistor
-    pinMode(encoderPinB, INPUT); // Set pinB as input with pull-up resistor
+    pinMode(encoderPinA, INPUT_PULLUP); // Set pinA as input with pull-up resistor
+    pinMode(encoderPinB, INPUT_PULLUP); // Set pinB as input with pull-up resistor
   
     // Attach interrupts to the A and B channels
     attachInterrupt(digitalPinToInterrupt(encoderPinA), updateEncoder, CHANGE);
@@ -130,14 +142,14 @@ void update_solenoid_list(int belt, int ripeness, float actuation_time) {
             if (ripeness == -1) {
                 insertSorted(sol1_u, activation_time);
                 sol10_waiting = true;
-                Serial.println("Appending to Solenoid 10");
+                //Serial.println("Appending to Solenoid 10");
                 //printCircularBuffer(sol1_u);
                 
             } 
             else if (ripeness == 2) {
                 insertSorted(sol1_o, activation_time);
                 sol11_waiting = true;
-                Serial.println("Appending to Solenoid 11");
+                //Serial.println("Appending to Solenoid 11");
                 //printCircularBuffer(sol1_o);
             }
             break;
@@ -224,9 +236,9 @@ void updateEncoder() {
 
   // Determine rotation direction and increment/decrement position
   if (sum == 0b1101 || sum == 0b0100 || sum == 0b0010 || sum == 0b1011) {
-    encoderPosition--;
-  } else if (sum == 0b1110 || sum == 0b0111 || sum == 0b0001 || sum == 0b1000) {
     encoderPosition++;
+  } else if (sum == 0b1110 || sum == 0b0111 || sum == 0b0001 || sum == 0b1000) {
+    encoderPosition--;
   }
 
   lastEncoded = encoded; // Update last encoded value
@@ -255,29 +267,49 @@ void updateEncoderProperties() {
   lastPosition = encoderPosition;
 
   // Debugging output
-  Serial.print("Filtered Speed (in/sec): ");
-  Serial.println(filteredSpeed);
+//  Serial.print("Filtered Speed (in/sec): ");
+//  Serial.println(filteredSpeed);
 }
 
 // Iterative speed control logic
 void iterativeControl() {
-  if (filteredSpeed < goalInchesPerSec) {
+  int currentPWMStep = pwmStep;
+  if (abs(filteredSpeed - goalInchesPerSec) <.9){
+      currentPWMStep /= 2;
+    }
+  
+  if (abs(filteredSpeed - goalInchesPerSec) <.1){
+    currentPWM = currentPWM;
+  }
+  else if (filteredSpeed < goalInchesPerSec) {
     // If speed is too low, increase PWM
-    currentPWM += pwmStep;
+    currentPWM += currentPWMStep;
     if (currentPWM > maxPWM) {
       currentPWM = maxPWM;
     }
   } else if (filteredSpeed > goalInchesPerSec) {
     // If speed is too high, decrease PWM
-    currentPWM -= pwmStep;
+    currentPWM -= currentPWMStep;
     if (currentPWM < minPWM) {
       currentPWM = minPWM;
     }
   }
 
   // Apply the new PWM value
-  analogWrite(DR_MOTOR_ENA, currentPWM);
-
+  //  motorStop = false;
+  if (motorStop){
+    analogWrite(DR_MOTOR_ENA, 0);
+    digitalWrite(vibeMotorSwitch, LOW);
+  }
+  else{
+    analogWrite(DR_MOTOR_ENA, currentPWM);
+    if (currentPWM < 50) {
+      digitalWrite(vibeMotorSwitch, LOW);
+    }
+    else{
+      digitalWrite(vibeMotorSwitch, HIGH);
+    }
+  }
   // Debugging output
 //  Serial.print("Goal Speed: ");
 //  Serial.print(goalInchesPerSec);
@@ -293,7 +325,7 @@ void MotorUpdate(int update_num){
   */
 
   int val = 0;
-  int max_num = 120;
+  int max_num = 255;
   int min_num = 0;
 
     //clip to acceptable range
@@ -302,12 +334,19 @@ void MotorUpdate(int update_num){
     goalInchesPerSec = max_num;
    }
    else if (update_num < min_num){
-    goalInchesPerSec = min_num
+    goalInchesPerSec = min_num;
    }
    else{
-    goalInchesPerSec = update_num
+    goalInchesPerSec = update_num;
    }
    //analogWrite(DR_MOTOR_ENA, val);//120 is max
+
+   if (update_num < 0.0){
+    motorStop = true;
+   }
+   else{
+    motorStop = false;
+   }
 }
 
 
@@ -315,8 +354,8 @@ void MotorUpdate(int update_num){
 void SerialUpdate() {
 String data = Serial.readStringUntil('\n');
     data.trim(); // Remove unnecessary whitespace
-    Serial.print("Received raw data: ");
-    Serial.println(data);
+//    Serial.print("Received raw data: ");
+//    Serial.println(data);
         int  belt, ripeness, shutdown_ard, motor_update;
     float motor_speed,elapsed_time,actuation_time;
 
@@ -325,14 +364,14 @@ String data = Serial.readStringUntil('\n');
       bool custom_parse = parseSerialData(data, motor_speed, belt, ripeness, shutdown_ard, actuation_time, elapsed_time, motor_update);
 
     if (custom_parse) {
-        Serial.println("Parsed values:");
-        Serial.print("Motor Speed: "); Serial.println(motor_speed);
-        Serial.print("Belt: "); Serial.println(belt);
-        Serial.print("Ripeness: "); Serial.println(ripeness);
-        Serial.print("Shutdown: "); Serial.println(shutdown_ard);
-        Serial.print("Actuation Time: "); Serial.println(actuation_time);
-        Serial.print("Elapsed Time: "); Serial.println(elapsed_time);
-        Serial.print("Motor Update: "); Serial.println(motor_update);
+//        Serial.println("Parsed values:");
+//        Serial.print("Motor Speed: "); Serial.println(motor_speed);
+//        Serial.print("Belt: "); Serial.println(belt);
+//        Serial.print("Ripeness: "); Serial.println(ripeness);
+//        Serial.print("Shutdown: "); Serial.println(shutdown_ard);
+//        Serial.print("Actuation Time: "); Serial.println(actuation_time);
+//        Serial.print("Elapsed Time: "); Serial.println(elapsed_time);
+//        Serial.print("Motor Update: "); Serial.println(motor_update);
 
         // Proceed with logic
 
@@ -349,8 +388,8 @@ String data = Serial.readStringUntil('\n');
       
           }
     } else {
-        Serial.print("Parsing failed. Fields parsed: ");
-        Serial.println(custom_parse);
+//        Serial.print("Parsing failed. Fields parsed: ");
+//        Serial.println(custom_parse);
     }
 
 
@@ -358,28 +397,46 @@ String data = Serial.readStringUntil('\n');
 }
 
 void ActivateSolenoid(int solenoid_num) {
-    Serial.print("Activating solenoid: ");
-    Serial.println(solenoid_num);
+//    Serial.print("Activating solenoid: ");
+//    Serial.println(solenoid_num);
     // GPIO activation logic
 
     if (solenoid_num == 10){
+      if (!solenoid_activated_10){
       digitalWrite(SOL10_PIN,HIGH);
+      }
+      solenoid_activated_10 = true;
+      last_sol_time_10 = millis();
     }
     else if (solenoid_num == 11){
+      if (!solenoid_activated_11){
       digitalWrite(SOL11_PIN,HIGH);
+      }
+      solenoid_activated_11 = true;
+      last_sol_time_11 = millis();
     }
 
-    solenoid_activated = true;
-    last_sol_time = millis();
+
 }
 
-void SolenoidsOff() {
-    Serial.print("Deactivating solenoids: ");
-
+void SolenoidsOff(int which_pin) {
+//    Serial.print("Deactivating solenoids: ");
+      if (which_pin == 10){
       digitalWrite(SOL10_PIN,LOW);
+      solenoid_activated_10 = false;
+      }
+      else if (which_pin ==11) {
       digitalWrite(SOL11_PIN,LOW);
-      solenoid_activated = false;
-
+      solenoid_activated_11 = false;
+      }
+      else{
+        digitalWrite(SOL11_PIN,LOW);
+        digitalWrite(SOL10_PIN,LOW);
+        solenoid_activated_10 = false;
+        solenoid_activated_11 = false;
+        
+      }
+      
 }
 
 void HandleSolenoidQueue(CircularBuffer<float, arraySize>& solenoid_array, bool& sol_waiting, int solenoid_num) {
@@ -390,8 +447,8 @@ void HandleSolenoidQueue(CircularBuffer<float, arraySize>& solenoid_array, bool&
         if (current_time >= solenoid_array[0] - threshold && current_time <= solenoid_array[0] + threshold) {
             ActivateSolenoid(solenoid_num);
             solenoid_array.shift();
-            Serial.println("Emptying Circular buff element. Newbuff:");
-            printCircularBuffer(solenoid_array);
+//            Serial.println("Emptying Circular buff element. Newbuff:");
+//            printCircularBuffer(solenoid_array);
         } else if (current_time > solenoid_array[0] + threshold) {
             solenoid_array.shift(); // Remove outdated entries
         }
@@ -451,7 +508,7 @@ void TestUpdate() {
         //Serial.println("About to append to solenoid list with CircularBuffer:");
         float update_time =  (actuation_time - elapsed_time) * 1000; // Convert to ms
         update_solenoid_list(belt, ripeness, update_time);
-        printCircularBuffer(sol1_o);
+        //printCircularBuffer(sol1_o);
     }
 }
 
@@ -472,11 +529,14 @@ void loop() {
     HandleAllSolenoids();
     //
 
-    if (solenoid_activated && last_sol_time + SOLENOID_ON < millis()){
-      SolenoidsOff();
+    if (solenoid_activated_10 && last_sol_time_10 + SOLENOID_ON < millis()){
+      SolenoidsOff(10);
+    }
+    if (solenoid_activated_11 && last_sol_time_11 + SOLENOID_ON < millis()){
+      SolenoidsOff(11);
     }
     //update encoder
-    if (millis() - lastEncodeTime >= 10) {
+    if (millis() - lastEncodeTime >= 4) {
       updateEncoderProperties();
     }
     //update speed control
@@ -491,19 +551,19 @@ void loop() {
 //    }
 
     
-    if (currentMillis - lastPrintTime >= printInterval) {
-        lastPrintTime = currentMillis; // Update the last print time
-
-        // Print the contents of the circular buffers
-        Serial.println("Printing circular buffers:");
-        Serial.print("Buffer sol1_u: ");
-        printCircularBuffer(sol1_u);
-        Serial.print("Buffer sol1_o: ");
-        printCircularBuffer(sol1_o);
-        Serial.print("Current Time: ");
-        Serial.println(millis()-first_time);
-        
-
-    }
+//    if (millis() - lastPrintTime >= printInterval) {
+//        lastPrintTime = millis(); // Update the last print time
+//
+//        // Print the contents of the circular buffers
+//        Serial.println("Printing circular buffers:");
+//        Serial.print("Buffer sol1_u: ");
+//        printCircularBuffer(sol1_u);
+//        Serial.print("Buffer sol1_o: ");
+//        printCircularBuffer(sol1_o);
+//        Serial.print("Current Time: ");
+//        Serial.println(millis()-first_time);
+//        
+//
+//    }
 
 }
