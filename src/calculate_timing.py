@@ -2,10 +2,10 @@
 BELT_DIAMETER = 2.08 #INCHES
 MOTOR_TOP_SPEED = 7000 #RPM
 MECHANICAL_REDUCTION = 4 #GEAR RATIO
-VISIBLE_BELT_LENGHT = 6 # INCHES
+VISIBLE_BELT_LENGHT = 5.84375 # INCHES
 #TOTAL_BELT_LENGTH = 6.75 # INCHES. THE TOTAL LENGTH OF BELT STARTING FROM VISIBLE AREA UNTIL THE END
-SOL_1_POS = 4.4
-SOL_2_POS = 8.35
+SOL_1_POS = 10.5
+SOL_2_POS = 12.375
 PIPELINE_COMPUTE_INTERVAL = .57 #seconds. the amount of time it takes for the program to run the vision pipeline
 PIXELS_PER_INCH = 2592/3.5 #TODO measure values better
 TOTAL_PIXELS = 640
@@ -72,7 +72,7 @@ def calculate_blueberry_timing(blueberry:Blueberry,motor_throttle,pipeline_compu
     #     return 0,blueberry
 
 
-    speed_correction = 1.08 #accounts for multiplicative factors
+    speed_correction = 1.00 #accounts for multiplicative factors
     speed*=speed_correction
 
 
@@ -149,7 +149,7 @@ def compare_and_update_tracker(tracked_blueberries:list[Blueberry],found_berries
 def compare_single_berry_to_tracker(tracked_blueberries:list[Blueberry],to_compare:Blueberry):
 
     #closeness threshold
-    thresh = .1 #inches
+    thresh = .35 #inches
     in_list = False
     for tracked in tracked_blueberries:
 

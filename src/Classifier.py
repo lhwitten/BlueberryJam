@@ -80,19 +80,22 @@ def classify_single(img_rgb,img_copy, single_centroid):
 #    is_ripe = 1
 #    return is_ripe
 
-def annotate_and_show(img_copy,centroid,similarity,ripeness):
+def annotate_and_show(img_copy,centroid,similarity,ripeness, quality = None):
     
     if ripeness == 0:
+        classification = "ripe"
         text = f"ripe:{round(similarity[0],3)}"
         subtext = f"R:{round(similarity[0],3)}"
         sub2 =   f"O: {round(similarity[1],3)}"
         sub3 =   f"U: {round(similarity[2],3)}"
     elif ripeness == 1:
+        classification = "overripe"
         text = f"overripe:{round(similarity[1],3)}"
         subtext = f"R:{round(similarity[0],3)}"
         sub2 =   f"O: {round(similarity[1],3)}"
         sub3 =   f"U: {round(similarity[2],3)}"
     else:
+        classification = "unripe"
         text = f"unripe:{round(similarity[2],3)}"
         subtext = f"R:{round(similarity[0],3)}"
         sub2 =   f"O: {round(similarity[1],3)}"
@@ -102,10 +105,14 @@ def annotate_and_show(img_copy,centroid,similarity,ripeness):
     offset_pos = (position[0] + 0,position[1] + 12)
     offset_pos2 = (position[0] + 0,position[1] + 24)
     offset_pos3 = (position[0] + 0,position[1] + 36)
-    cv.putText(img_copy,text, position, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
-    cv.putText(img_copy,subtext, offset_pos, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
-    cv.putText(img_copy,sub2, offset_pos2, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
-    cv.putText(img_copy,sub3, offset_pos3, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
+    if quality:
+        text = classification + f": {round(quality,3)}"
+        cv.putText(img_copy,text, position, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
+    else:
+        cv.putText(img_copy,text, position, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
+        cv.putText(img_copy,subtext, offset_pos, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
+        cv.putText(img_copy,sub2, offset_pos2, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
+        cv.putText(img_copy,sub3, offset_pos3, cv.FONT_HERSHEY_DUPLEX, 0.4, (0, 0, 255), 1)
     [x_min,y_min,width,height] = centroid[2]
     cX = centroid[0]
     cY = centroid[1]

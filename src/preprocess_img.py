@@ -141,7 +141,7 @@ def perform_centroiding(masked_frame,img_rgb):
     for contour in contours:
         # print(cv.contourArea(contour))
         contour_area = cv.contourArea(contour) #original just asks contour to be larger than 500
-        if contour_area >= 1000 and contour_area < 13000: # only calculate centroids for contours larger than 500px
+        if contour_area >= 400 and contour_area < 13000: # only calculate centroids for contours larger than 500px
 # calculate moments of the contour
             M = cv.moments(contour)
             if M["m00"] != 0:  # avoid divide by zero error
@@ -154,7 +154,7 @@ def perform_centroiding(masked_frame,img_rgb):
                 x_min = int(cX - radius) if int(cX - radius) > 0 else 0 
                 y_min = int(cY - radius) if int(cY - radius) > 0 else 0
 
-                if radius > 50:
+                if radius > 70:
                     continue #radius too big
 
                 # if int(cX - radius) > 0 or int(cY - radius) > 0:
@@ -262,3 +262,131 @@ def apply_multi_bg(masks: list, path: str = None, frame = None) -> list:
     masked_images.append(combined_image)
 
     return masked_images, img_rgb,mask_list
+
+#a replacement for a large block of code in main
+def process_mask_centroids(mask_list, img_rgb):
+    processed_imgs = []
+    centroid_results = []
+    existing_centroids = []
+
+    for i, img in enumerate(mask_list):
+        if i >2:
+            continue
+        processed, raw_centroids = perform_centroiding(img, img_rgb)
+        print(f"raw centroids: {raw_centroids}")
+
+        # Convert returned centroids into a structured form
+        curr_mask_centroids = []
+        for (cX, cY, box, score) in raw_centroids:
+            curr_mask_centroids.append({
+                'x': cX,
+                'y': cY,
+                'box': box,
+                'score': score,
+                'mask_idx': i,
+                'quality': 1.0,
+                'quantity': score
+            })
+        
+        print(f"curr_mask_centroids: {curr_mask_centroids}")
+
+        if existing_centroids:
+            # We'll store newly accepted centroids that do not conflict
+            accepted_new_centroids = []
+            for new_centroid in curr_mask_centroids:
+                print(f"new centroid: {new_centroid}")
+                # Check if it's close to any existing centroid
+                close_matches = [
+                    (idx, ex_cent) for idx, ex_cent in enumerate(existing_centroids)
+                    if pythag_centroid_euclid((new_centroid['x'], new_centroid['y']),
+                                              [(ex_cent['x'], ex_cent['y'])],
+                                              thresh=30)
+                ]
+                print(f"close_matches: {close_matches}")
+                if not close_matches:
+                    # No close existing centroid, accept it
+                    accepted_new_centroids.append(new_centroid)
+                else:
+                    # There's at least one close existing centroid
+                    # For simplicity, handle just the first match
+                    match_idx, existing_c = close_matches[0]
+                    print(f"about to compare centroids { existing_c},{new_centroid}")
+                    chosen = compare_centroids(existing_c, new_centroid)
+                    if chosen is new_centroid:
+                        # Replace the old centroid with the new one
+                        existing_centroids[match_idx] = new_centroid
+                    # If chosen is the old one, discard the new centroid
+            print(f"accepted new centroids {accepted_new_centroids}")
+
+            # Add all newly accepted centroids that didn't overlap or lost replacement
+            for c in accepted_new_centroids:
+                if c not in existing_centroids:
+                    existing_centroids.append(c)
+        else:
+            # No existing centroids yet, so accept all current centroids
+            existing_centroids.extend(curr_mask_centroids)
+
+        centroid_results.append(curr_mask_centroids)
+        processed_imgs.append(processed)
+    
+    # Repackage centroid_results from dicts to lists
+    # Structure: [x,y,box,score,mask_idx,quality,quantity]
+    repackaged_results = []
+    for centroid_list in centroid_results:
+        repackaged_list = []
+        for c in centroid_list:
+            repackaged_list.append([
+                c['x'],
+                c['y'],
+                c['box'],
+                c['score'],
+                c['mask_idx'],
+                c['quality'],
+                c['quantity']
+            ])
+        repackaged_results.append(repackaged_list)
+
+    print(f"repacked results: {repackaged_results}")
+
+
+    return processed_imgs, repackaged_results, existing_centroids
+
+def compare_centroids(old_centroid, new_centroid):
+    """
+    Compare two centroids based on their similarity scores and mask indices.
+    Return the centroid dictionary that should be kept.
+    Example logic:
+    1. Prioritize mask index (0 highest priority, then 1, then 2).
+    2. If both centroids have the same priority, choose by similarity score.
+    """
+
+    mask_priority = {0: 3, 1: 2, 2: 1}  # Overripe=0 (highest), Ripe=1, Underripe=2 (lowest)
+
+    old_priority = mask_priority[old_centroid['mask_idx']]
+    new_priority = mask_priority[new_centroid['mask_idx']]
+
+    # Update quantities and qualities
+    new_quantity = old_centroid['quantity'] + new_centroid['quantity']
+    old_centroid['quantity'] = new_quantity
+    new_centroid['quantity'] = new_quantity
+
+    new_centroid['quality'] = new_centroid['score'] / new_quantity
+    old_centroid['quality'] = old_centroid['score'] / new_quantity
+
+    # Priority logic
+    if new_priority > old_priority:
+        # New centroid is from a higher priority mask
+        if old_priority > 1.3 * new_priority:
+            # Keep old centroid despite the difference if this condition is met
+            return old_centroid
+        return new_centroid
+    elif new_priority < old_priority:
+        # Old centroid is from a higher priority mask
+        # Check special condition
+        if new_priority > 1.3 * old_priority:
+            # Keep new centroid since it surpasses old centroid by a significant margin
+            return new_centroid
+        return old_centroid
+    else:
+        # Same priority, choose by similarity score
+        return new_centroid if new_centroid['score'] > old_centroid['score'] else old_centroid

@@ -6,10 +6,12 @@ import time
 # GPIO pin definitions
 START_BUTTON_PIN = 5
 STOP_BUTTON_PIN = 6
+DEBUG_PIN = 19
 
 # Shared global variables for button state
 start_pressed = False
 stop_pressed = False
+debug_pressed = False
 
 # Custom GPIO Pin Definitions
 RS_pin = 24      # Register Select (Example: GPIO 17)
@@ -63,11 +65,12 @@ def setup_gpio():
     GPIO.setmode(GPIO.BCM)  # Use BCM GPIO numbering
     GPIO.setup(START_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)  # Pull-down for start button
     GPIO.setup(STOP_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)   # Pull-down for stop button
+    GPIO.setup(DEBUG_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
     GPIO.setup([RS_pin, E_pin, D4_pin, D5_pin, D6_pin, D7_pin], GPIO.OUT)
 
 # Thread function to monitor button presses
 def button_monitor():
-    global start_pressed, stop_pressed
+    global start_pressed, stop_pressed,debug_pressed 
     while True:
         # Check for button presses
         if GPIO.input(START_BUTTON_PIN) == GPIO.HIGH:
@@ -77,8 +80,16 @@ def button_monitor():
         if GPIO.input(STOP_BUTTON_PIN) == GPIO.LOW:
             print("Stop button pressed!")
             stop_pressed = True
+
+        if GPIO.input(DEBUG_PIN) == GPIO.HIGH:
+            if not debug_pressed:
+                print("Debug pressed pressed!")
+            debug_pressed = True
         
         time.sleep(0.05)  # Small delay to prevent high CPU usage
+
+        if debug_pressed:
+            raise Exception("Debug pressed")
 
 # Function to start the monitoring thread
 def start_button_thread():
@@ -90,7 +101,10 @@ def start_button_thread():
 
 # Function to check button states (for main.py to call)
 def were_buttons_pressed():
-    global start_pressed, stop_pressed
+    global start_pressed, stop_pressed,debug_pressed
+    if debug_pressed:
+        raise Exception("Debug Switch Pressed")
+    
     return start_pressed, stop_pressed
 
 def reset_buttons():

@@ -86,12 +86,12 @@ def main(serial_connected = True):
                 first_wait = False   
                 update_only_motor_speed(stop_speed)
                 construct_and_send_LCD(control_speed,True,current_error)
-                stop_time = time.time()
+                # stop_time = time.time()
                 while not new_start_press:
                     new_start_press, new_stop_press = were_buttons_pressed()
                     time.sleep(.05)
-                    if time.time() - stop_time > stop_time_before_quit:
-                        raise Exception("wait too long on button")
+                    # if time.time() - stop_time > stop_time_before_quit:
+                    #     raise Exception("wait too long on button")
                 update_only_motor_speed(control_speed)
                 construct_and_send_LCD(control_speed,False,current_error)
                 reset_buttons()
@@ -130,7 +130,6 @@ def main(serial_connected = True):
                 #overripe, ripe, underripe(#TODO)
                 #masks = [[(0, 70, 100), (95, 140, 137)],[(0, 102, 138), (95, 140, 150)],[(0, 70, 100), (95, 140, 160)]]
                 masks = [[(20, 0, 0), (180, 85, 65)],[(0, 60, 0), (38, 145, 100)],[(0, 135, 0), (180, 255, 150)]]
-
                 
                 # with open(output_folder + log_file,"a") as f:
 
@@ -148,58 +147,21 @@ def main(serial_connected = True):
                     processed, centroids = perform_centroiding(masked,img_rgb)
                 else:
                     # for multiple masks
-                    masked_imgs,img_rgb,mask_list = apply_multi_bg(masks,frame=crop_img_center(frame, 225,bias = 42))
+                    masked_imgs,img_rgb,mask_list = apply_multi_bg(masks,frame=crop_img_center(frame, 195,bias = 9))
 
-                    #cv.imshow("overripe",masked_imgs[0])
-                    #cv.imshow("ripe",masked_imgs[1])
-                    # cv.imshow("unripe",masked_imgs[2])
+                    cv.imshow("overripe",masked_imgs[0])
+                    cv.imshow("ripe",masked_imgs[1])
+                    cv.imshow("unripe",masked_imgs[2])
                     # cv.imshow("total_mask",masked_imgs[3])
                     #cv.waitKey(0)
 
                     # print(masked_imgs)
                     # print(img_rgb)
-                    processed_imgs = []
-                    centroid_results = []
-                    existing_centroids = []
-                    for i, img in enumerate(mask_list):
-                        # overripe, ripe, underripe - i
-                        #cv.waitKey(0)
-                        processed, centroids = perform_centroiding(img,img_rgb)
-                        processed_imgs.append(processed)
 
-                        curr_mask_centroids = [(k[0], k[1]) for k in centroids] # (cX,cY)           
-                        #print(curr_mask_centroids)     
-                        # print('number of current centroids', len(centroid_results))
-                        # print(centroid_results[0]) if len(centroid_results) >0 else print(len(centroid_results))
-                        #compared centroids to centroid_results (keep in mind which mask should have priority (overripe))
-                        # TODO: check if centroid is too close or the same as an existing centroid in another mask
-                        if len(centroid_results) > 0: # only check duplicates if centroids already exist
-                            #print(centroid_results)
-                            #existing_centroids = [(k[0][0], k[0][1]) for k in centroid_results if k]
+                    # the following code compares the lists of centroids
+                    processed_imgs, centroid_results, existing_centroids = process_mask_centroids(mask_list,img_rgb)
 
-
-
-                            #intersections = set(existing_centroids) & set(curr_mask_centroids)
-                            for j in reversed(curr_mask_centroids):
-                                #print(f"existing centroids is {existing_centroids}")
-                                is_close = pythag_centroid_euclid(j,existing_centroids,thresh=20)
-
-                                if not is_close:
-                                    continue
-                                #favors centroids already tracked (by extension overripe)
-                                #print(f"popping:{j}")
-                                idx = curr_mask_centroids.index(j)
-                                centroids.pop(idx)
-                                curr_mask_centroids.pop(idx)
-                                
-                        existing_centroids.extend(curr_mask_centroids)            
-                        centroid_results.append(centroids)
-
-                        # print(f"centroid results is {centroid_results}")
-                        # print(f"existing_centroids is {existing_centroids}")
-                        # pdb.set_trace()
-                    #print(centroid_results)
-                    #cv.waitKey(0)
+                    print(centroid_results)
                         
 
                 # cv2.imshow("Processed Stream", processed)
@@ -263,11 +225,13 @@ def main(serial_connected = True):
                             # if berry.ripeness == -5:
                             #     continue
 
-                            annotate_and_show(annotation_space,centroid,similarities,is_ripe)
+                            quality_score = centroid[5]
+
+                            annotate_and_show(annotation_space,centroid,similarities,is_ripe,quality=quality_score)
                         
                             blueberry_list.append(berry)
                     
-                    #cv.imshow("annotated image",annotation_space)
+                    cv.imshow("annotated image",annotation_space)
                     # result = save_annotated_frame(annotation_space)
                     # print(result)
 

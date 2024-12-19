@@ -6,6 +6,7 @@ import os
 import copy
 from queue import Queue
 from calculate_timing import Blueberry
+from buttons_screen import *
 blueberry_process_queue = Queue()
 
 #TODO write procedure for finding correct port
@@ -81,6 +82,8 @@ def async_serial_comm_blueberry_list(interval=1):
         send_blueberry_list_data(blueberry_process_queue,motor_speed, shutdown, last_update_time)
         time.sleep(interval)
         #blueberry_process_queue.clear() #empty the list
+
+        start,stop = were_buttons_pressed() # to check for turnoff
 
 def update_variables(new_motor_speed, new_servo_angles, new_shutdown, new_actuation_times):
     """
@@ -176,8 +179,8 @@ def send_blueberry_list_data(process_queue,motor_speed, shutdown, update_time):
                     full_elapsed = elapsed_time + elapsed_delta
 
                     data_packet = f"{motor_speed:.3f}|{belt_num}|{ripeness}|{int(shutdown)}|{time1:.3f}|{full_elapsed:.3f}|{motor_update}\n"
-                    print("sending blueberry packet")
-                    print(data_packet)
+                    # print("sending blueberry packet")
+                    # print(data_packet)
                     #print(f"queue size is {process_queue.qsize()}")
                     #data_packet = f"{motor_speed}|{belt_num}|{ripeness}|{int(shutdown)}|{time1}|{elapsed_time:.3f}\n"
                     #ser.write(data_packet.encode())
