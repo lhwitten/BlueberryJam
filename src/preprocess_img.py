@@ -141,7 +141,7 @@ def perform_centroiding(masked_frame,img_rgb):
     for contour in contours:
         # print(cv.contourArea(contour))
         contour_area = cv.contourArea(contour) #original just asks contour to be larger than 500
-        if contour_area >= 400 and contour_area < 13000: # only calculate centroids for contours larger than 500px
+        if contour_area >= 700 and contour_area < 13000: # only calculate centroids for contours larger than 500px
 # calculate moments of the contour
             M = cv.moments(contour)
             if M["m00"] != 0:  # avoid divide by zero error
@@ -262,23 +262,72 @@ def apply_multi_bg(masks: list, path: str = None, frame = None) -> list:
     masked_images.append(combined_image)
 
     return masked_images, img_rgb,mask_list
+def prune_close_centroids(existing_centroids, thresh=30):
+    """
+    Prune close centroids until none remain within 'thresh' distance of each other.
+    """
+    iteration_count = 0
+    while True:
+        iteration_count += 1
+        print(f"[DEBUG][prune_close_centroids] Starting pruning iteration {iteration_count}. Current centroids:")
+        for c in existing_centroids:
+            print(f"    {c}")
 
-#a replacement for a large block of code in main
+        changed = False
+        i = 0
+        while i < len(existing_centroids):
+            j = i + 1
+            while j < len(existing_centroids):
+                c1 = existing_centroids[i]
+                c2 = existing_centroids[j]
+                # Compute Euclidean distance
+                dist = ((c1['x'] - c2['x'])**2 + (c1['y'] - c2['y'])**2)**0.5
+                print(f"[DEBUG][prune_close_centroids] Checking pair i={i}, j={j}: dist={dist:.2f}, thresh={thresh}")
+
+                if dist < thresh:
+                    print(f"[INFO][prune_close_centroids] Found close pair: {c1} and {c2}. Merging...")
+                    chosen = compare_centroids(c1, c2)
+                    if chosen is c1:
+                        print(f"[INFO][prune_close_centroids] Keeping {c1}, removing {c2}")
+                        del existing_centroids[j]
+                    else:
+                        print(f"[INFO][prune_close_centroids] Keeping {c2}, removing {c1}")
+                        del existing_centroids[i]
+                        i -= 1
+                    changed = True
+                    print("[DEBUG][prune_close_centroids] A pair was removed. Restarting from scratch.")
+                    break
+                else:
+                    j += 1
+            if changed:
+                # break from outer loop to restart
+                break
+            i += 1
+
+        if not changed:
+            print(f"[DEBUG][prune_close_centroids] No changes made in iteration {iteration_count}, pruning complete.")
+            break
+
+
 def process_mask_centroids(mask_list, img_rgb):
     processed_imgs = []
-    centroid_results = []
+    # Instead of storing intermediate results from each mask, we'll store them in a temporary list
+    # and only create repackaged_results after final pruning.
+    temporary_results = []
     existing_centroids = []
+    CLOSE_THRESH = 30
 
     for i, img in enumerate(mask_list):
-        if i >2:
+        if i > 2:
             continue
-        processed, raw_centroids = perform_centroiding(img, img_rgb)
-        print(f"raw centroids: {raw_centroids}")
 
-        # Convert returned centroids into a structured form
+        print(f"\n[INFO] Processing mask index {i}")
+        processed, raw_centroids = perform_centroiding(img, img_rgb)
+        print(f"[DEBUG] Raw centroids for mask {i}: {raw_centroids}")
+
         curr_mask_centroids = []
         for (cX, cY, box, score) in raw_centroids:
-            curr_mask_centroids.append({
+            curr = {
                 'x': cX,
                 'y': cY,
                 'box': box,
@@ -286,78 +335,91 @@ def process_mask_centroids(mask_list, img_rgb):
                 'mask_idx': i,
                 'quality': 1.0,
                 'quantity': score
-            })
-        
-        print(f"curr_mask_centroids: {curr_mask_centroids}")
+            }
+            curr_mask_centroids.append(curr)
+        print(f"[DEBUG] Current mask {i} centroids as dict: {curr_mask_centroids}")
 
-        if existing_centroids:
-            # We'll store newly accepted centroids that do not conflict
-            accepted_new_centroids = []
+        if not existing_centroids:
+            # No existing centroids, accept all
+            existing_centroids.extend(curr_mask_centroids)
+            print(f"[INFO] No existing centroids yet, accepted all from mask {i}.")
+        else:
+            # Merge new centroids into existing ones
+            print(f"[INFO] Merging new centroids from mask {i} into existing centroids.")
             for new_centroid in curr_mask_centroids:
-                print(f"new centroid: {new_centroid}")
-                # Check if it's close to any existing centroid
+                print(f"\n[DEBUG] Evaluating new centroid: {new_centroid}")
+
+                # Check all close matches
                 close_matches = [
                     (idx, ex_cent) for idx, ex_cent in enumerate(existing_centroids)
                     if pythag_centroid_euclid((new_centroid['x'], new_centroid['y']),
                                               [(ex_cent['x'], ex_cent['y'])],
-                                              thresh=30)
+                                              thresh=CLOSE_THRESH)
                 ]
-                print(f"close_matches: {close_matches}")
-                if not close_matches:
-                    # No close existing centroid, accept it
-                    accepted_new_centroids.append(new_centroid)
-                else:
-                    # There's at least one close existing centroid
-                    # For simplicity, handle just the first match
+                print(f"[DEBUG] Close matches found for new centroid: {close_matches}")
+
+                while close_matches:
                     match_idx, existing_c = close_matches[0]
-                    print(f"about to compare centroids { existing_c},{new_centroid}")
+                    print(f"[DEBUG] About to compare centroids. Existing: {existing_c}, New: {new_centroid}")
                     chosen = compare_centroids(existing_c, new_centroid)
                     if chosen is new_centroid:
-                        # Replace the old centroid with the new one
+                        print(f"[INFO] New centroid won against existing centroid at index {match_idx}. Replacing.")
                         existing_centroids[match_idx] = new_centroid
-                    # If chosen is the old one, discard the new centroid
-            print(f"accepted new centroids {accepted_new_centroids}")
+                        close_matches = [
+                            (idx, ex_cent) for idx, ex_cent in enumerate(existing_centroids)
+                            if idx != match_idx and pythag_centroid_euclid(
+                                (new_centroid['x'], new_centroid['y']),
+                                [(ex_cent['x'], ex_cent['y'])],
+                                thresh=CLOSE_THRESH)
+                        ]
+                        print(f"[DEBUG] Re-checked close matches after merge: {close_matches}")
+                    else:
+                        print(f"[INFO] Existing centroid at index {match_idx} won. Discarding new centroid.")
+                        new_centroid = chosen
+                        break
+                else:
+                    # If loop completes normally, new_centroid survived
+                    if new_centroid not in existing_centroids:
+                        print(f"[INFO] Adding surviving new centroid to existing.")
+                        existing_centroids.append(new_centroid)
 
-            # Add all newly accepted centroids that didn't overlap or lost replacement
-            for c in accepted_new_centroids:
-                if c not in existing_centroids:
-                    existing_centroids.append(c)
-        else:
-            # No existing centroids yet, so accept all current centroids
-            existing_centroids.extend(curr_mask_centroids)
-
-        centroid_results.append(curr_mask_centroids)
+        print(f"[DEBUG] Existing centroids after processing mask {i}: {existing_centroids}")
+        # Store the current mask's raw centroids temporarily
+        temporary_results.append(curr_mask_centroids)
         processed_imgs.append(processed)
-    
-    # Repackage centroid_results from dicts to lists
-    # Structure: [x,y,box,score,mask_idx,quality,quantity]
-    repackaged_results = []
-    for centroid_list in centroid_results:
-        repackaged_list = []
-        for c in centroid_list:
-            repackaged_list.append([
-                c['x'],
-                c['y'],
-                c['box'],
-                c['score'],
-                c['mask_idx'],
-                c['quality'],
-                c['quantity']
-            ])
-        repackaged_results.append(repackaged_list)
 
-    print(f"repacked results: {repackaged_results}")
+    # After processing all masks, perform pruning
+    print("\n[INFO] Final pruning pass over existing centroids.")
+    prune_close_centroids(existing_centroids, CLOSE_THRESH)
+    print(f"[DEBUG] Existing centroids after final pruning: {existing_centroids}")
 
+    # Now repackage results from the final, pruned existing_centroids only
+    # so that repackaged_results contain no duplicates.
+    # We do not use temporary_results directly anymore. Instead, create a single final result list
+    # from the pruned existing_centroids.
+    repackaged_results = [[]]  # We'll put all final centroids into the first list for consistency
+    for c in existing_centroids:
+        repackaged_results[0].append([
+            c['x'],
+            c['y'],
+            c['box'],
+            c['score'],
+            c['mask_idx'],
+            c['quality'],
+            c['quantity']
+        ])
+
+    print("[INFO] Finished process_mask_centroids.")
+    print(f"[DEBUG] Final repackaged results: {repackaged_results}")
+    print(f"[DEBUG] Final existing centroids: {existing_centroids}")
 
     return processed_imgs, repackaged_results, existing_centroids
+
 
 def compare_centroids(old_centroid, new_centroid):
     """
     Compare two centroids based on their similarity scores and mask indices.
     Return the centroid dictionary that should be kept.
-    Example logic:
-    1. Prioritize mask index (0 highest priority, then 1, then 2).
-    2. If both centroids have the same priority, choose by similarity score.
     """
 
     mask_priority = {0: 3, 1: 2, 2: 1}  # Overripe=0 (highest), Ripe=1, Underripe=2 (lowest)
@@ -373,20 +435,17 @@ def compare_centroids(old_centroid, new_centroid):
     new_centroid['quality'] = new_centroid['score'] / new_quantity
     old_centroid['quality'] = old_centroid['score'] / new_quantity
 
-    # Priority logic
     if new_priority > old_priority:
-        # New centroid is from a higher priority mask
+        # New centroid from a higher priority mask
         if old_priority > 1.3 * new_priority:
-            # Keep old centroid despite the difference if this condition is met
             return old_centroid
         return new_centroid
     elif new_priority < old_priority:
-        # Old centroid is from a higher priority mask
-        # Check special condition
+        # Old centroid from a higher priority mask
         if new_priority > 1.3 * old_priority:
-            # Keep new centroid since it surpasses old centroid by a significant margin
             return new_centroid
         return old_centroid
     else:
-        # Same priority, choose by similarity score
+        # Same priority, choose by higher score
         return new_centroid if new_centroid['score'] > old_centroid['score'] else old_centroid
+
