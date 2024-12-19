@@ -8,6 +8,7 @@ from calculate_timing import *
 from buttons_screen import *
 import serial
 import threading
+import random
 import time
 from Serial_connector import *
 from calculate_timing import Blueberry
@@ -26,12 +27,9 @@ def main(serial_connected = True):
     #datetime.now().strftime('%Y%m%d_%H%M%S')
     # with open(output_folder + log_file,"a") as f: #UNCOMMENT FOR LOGGING. #TODO implement logging option
     #     f.write(f"Program Start at: {time.time() - first_time}\n capture interval is {capture_interval}\n")
-
     my_cam = initialize_camera_stream()
-    
     button_thread = start_button_thread()
     lcd_init()
-
     if serial_connected:
         #serial communication
         # comm_thread = start_comm_thread(0,interval=1)#0 notes its for serial read updates
@@ -49,25 +47,28 @@ def main(serial_connected = True):
     control_speed = 2.0
     stop_speed = -5.0
     current_error = 0
+    stop_time_before_quit = 20
     update_only_motor_speed(stop_speed) # goal 7 in/s
     #wait for start
-
     construct_and_send_LCD(control_speed,True,current_error)
     new_stop_press, new_start_press = False,False
-    while not new_start_press:
-        new_start_press, new_stop_press = were_buttons_pressed()
-        time.sleep(.05)
-    update_only_motor_speed(control_speed)
-    reset_buttons()
-    time.sleep(.5)
 
+    # stop_time = time.time()
+    # while not new_start_press:
+    #     new_start_press, new_stop_press = were_buttons_pressed()
+    #     time.sleep(.05)
+    #     if time.time() - stop_time > stop_time_before_quit:
+    #         break
+            
+    # update_only_motor_speed(control_speed)
+    # reset_buttons()
+    # time.sleep(.5)
 
     #a list of known blueberries
     persistent_blueberry_tracker = []
 
-    construct_and_send_LCD(control_speed,False,current_error)
-
-
+    # construct_and_send_LCD(control_speed,False,current_error)
+    first_wait = True
     try:
         while True:
             
@@ -77,20 +78,28 @@ def main(serial_connected = True):
             
             #start and stop based on buttons
             new_start_press, new_stop_press = were_buttons_pressed()
+
         
-            if not new_stop_press:
+            if not new_stop_press and not first_wait:
                 update_only_motor_speed(control_speed)
-            else:   
+            else:
+                first_wait = False   
                 update_only_motor_speed(stop_speed)
                 construct_and_send_LCD(control_speed,True,current_error)
+                stop_time = time.time()
                 while not new_start_press:
                     new_start_press, new_stop_press = were_buttons_pressed()
                     time.sleep(.05)
+                    if time.time() - stop_time > stop_time_before_quit:
+                        raise Exception("wait too long on button")
                 update_only_motor_speed(control_speed)
                 construct_and_send_LCD(control_speed,False,current_error)
                 reset_buttons()
                 time.sleep(.5)
+                
+
             reset_buttons()
+
 
 
             current_time = time.time()
@@ -99,12 +108,13 @@ def main(serial_connected = True):
                 # Grab the latest frame for preview
                 # with open(output_folder + log_file,"a") as f:
                 #     f.write(f"about to grab frame at: {time.time() - first_time}\n")
+
                 frame = capture_camera_stream(my_cam,-1)
                 # frame = cv.imread("/home/blueberryjam/BlueberryJam/img/recolored_unripe_full1.jpg")
                 time_at_picture = time.time()
                 
                 # Show the video stream (requires display capability)
-                cv2.imshow("Camera Stream", frame)
+                #cv2.imshow("Camera Stream", frame)
                 image_path = 'R_06.11'
 
                 #mask = [(0, 70, 100), (95, 125, 134)] # [low, high]
@@ -128,7 +138,10 @@ def main(serial_connected = True):
 
                 #processed = preprocess_image(mask,path=None,frame=None)
                 #processed = preprocess_image(mask,path=None,frame=frame)
+
                 frame = cv.rotate(frame,cv.ROTATE_90_CLOCKWISE)
+
+
                 
                 if not masks:
                     masked,img_rgb = perform_backgrounding(mask,frame=crop_img_center(frame, 450,bias = 140))
@@ -137,8 +150,8 @@ def main(serial_connected = True):
                     # for multiple masks
                     masked_imgs,img_rgb,mask_list = apply_multi_bg(masks,frame=crop_img_center(frame, 225,bias = 42))
 
-                    cv.imshow("overripe",masked_imgs[0])
-                    cv.imshow("ripe",masked_imgs[1])
+                    #cv.imshow("overripe",masked_imgs[0])
+                    #cv.imshow("ripe",masked_imgs[1])
                     # cv.imshow("unripe",masked_imgs[2])
                     # cv.imshow("total_mask",masked_imgs[3])
                     #cv.waitKey(0)
@@ -188,11 +201,7 @@ def main(serial_connected = True):
                     #print(centroid_results)
                     #cv.waitKey(0)
                         
-                        
 
-
-                
-                
                 # cv2.imshow("Processed Stream", processed)
 
                 
@@ -226,7 +235,7 @@ def main(serial_connected = True):
                             continue
                         
                         blueberry_list.append(berry)
-                    cv.imshow("annotated image",annotation_space)
+                    #cv.imshow("annotated image",annotation_space)
                 else:
                     annotation_space = img_rgb.copy()
                     for i,centroid_list in enumerate(centroid_results):
@@ -253,11 +262,12 @@ def main(serial_connected = True):
                             #berry.ripeness = classify_single(img_rgb,annotation_space,centroid)
                             # if berry.ripeness == -5:
                             #     continue
+
                             annotate_and_show(annotation_space,centroid,similarities,is_ripe)
                         
                             blueberry_list.append(berry)
                     
-                    cv.imshow("annotated image",annotation_space)
+                    #cv.imshow("annotated image",annotation_space)
                     # result = save_annotated_frame(annotation_space)
                     # print(result)
 
@@ -267,6 +277,7 @@ def main(serial_connected = True):
                 # print(f"persistently pre update {blueberry_positions_to_string(persistent_blueberry_tracker)}")
 
                 #update the tracker with expected blueberry locations
+
                 update_persistence_tracker(persistent_blueberry_tracker,motor_throttle,time.time()-last_process_time,control_speed)
                 # print(f"persistently post update {blueberry_positions_to_string(persistent_blueberry_tracker)}")
 
@@ -275,6 +286,8 @@ def main(serial_connected = True):
                 # print(f"persistently pre sort {blueberry_positions_to_string(persistent_blueberry_tracker)}")
 
                 blueberry_list =compare_and_update_tracker(persistent_blueberry_tracker,blueberry_list)
+
+
 
                 # print(f"blueberry_list post sort {blueberry_positions_to_string(blueberry_list)}") 
                 # print(f"persistently post sort {blueberry_positions_to_string(persistent_blueberry_tracker)}")
@@ -286,8 +299,11 @@ def main(serial_connected = True):
                 for blueberry_obj in blueberry_list:
 
                     #print(blueberry_obj)
+
                     
-                    blueberry_obj.ripeness =-1
+                    
+                    #blueberry_obj.ripeness = 2 #random.choice([-1,2])
+                    blueberry_obj.ripeness = random.choice([-1,2])
                     valid_send, berry_candidate = calculate_blueberry_timing(blueberry_obj,motor_throttle,time.time() - time_at_picture,control_speed)
                     
                     #print(berry_candidate)
@@ -313,14 +329,16 @@ def main(serial_connected = True):
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
-    except KeyboardInterrupt:
+    except Exception as e:
+        print(f"Ending, exception:{e}")
         print("Stopping capture...")
     finally:
+        current_error = 9999
         end_camera_stream(my_cam)
         #serial communication shutdown
         shutdown = True
         update_only_motor_speed(stop_speed)
-        construct_and_send_LCD(control_speed,True,current_error)
+        construct_and_send_LCD(goal_speed=-9.999,is_stopped=True,Error_code=current_error)
         button_thread.join()
         cleanup_gpio()
 

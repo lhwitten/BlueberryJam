@@ -72,7 +72,7 @@ def calculate_blueberry_timing(blueberry:Blueberry,motor_throttle,pipeline_compu
     #     return 0,blueberry
 
 
-    speed_correction = 1.0 #accounts for multiplicative factors
+    speed_correction = 1.08 #accounts for multiplicative factors
     speed*=speed_correction
 
 

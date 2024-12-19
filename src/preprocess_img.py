@@ -122,7 +122,7 @@ def perform_backgrounding( mask:list, path:str = None,frame = None):
     luv_hi = mask[1]
 # apply color mask to image
     mask_luv = cv.inRange(img_luv, luv_lo, luv_hi)
-    cv.imshow("HSV Mask", mask_luv)
+    #cv.imshow("HSV Mask", mask_luv)
     #cv.waitKey(0)
 
     return mask_luv,img_rgb

@@ -170,13 +170,15 @@ def send_blueberry_list_data(process_queue,motor_speed, shutdown, update_time):
                     motor_speed = blueberry.motor_speed
                 else:
                     motor_speed = 0.0 #goal in/s
+                num_tries = 0
                 success = False
                 while not success:
                     full_elapsed = elapsed_time + elapsed_delta
 
                     data_packet = f"{motor_speed:.3f}|{belt_num}|{ripeness}|{int(shutdown)}|{time1:.3f}|{full_elapsed:.3f}|{motor_update}\n"
-                    print("sending blueberry packet")
-                    print(data_packet)
+                    if not motor_update:
+                        print("sending blueberry packet")
+                        print(data_packet)
                     #print(f"queue size is {process_queue.qsize()}")
                     #data_packet = f"{motor_speed}|{belt_num}|{ripeness}|{int(shutdown)}|{time1}|{elapsed_time:.3f}\n"
                     #ser.write(data_packet.encode())
@@ -191,7 +193,10 @@ def send_blueberry_list_data(process_queue,motor_speed, shutdown, update_time):
                         reconnect_end = time.monotonic()
                         reconnect_delta = reconnect_end - reconnect_start
                         elapsed_delta +=reconnect_delta
-                        print("serial disconnect and reconnect")
+                        num_tries +=1
+                        # if num_tries > 50:
+                        #     break
+                        #print("serial disconnect and reconnect")
                 time.sleep(.01)
                 elapsed_delta += .01
 
