@@ -24,11 +24,35 @@ class WebcamApp:
         if not self.cap.isOpened():
             raise Exception("Webcam not accessible")
         
+        # get camera type
+        camera_type = self.cap.get(cv2.CAP_PROP_BACKEND)
+        if camera_type == cv2.CAP_V4L2:
+            print("Using V4L2 backend")
+        elif camera_type == cv2.CAP_DSHOW:
+            print("Using DirectShow backend")
+        elif camera_type == cv2.CAP_GSTREAMER:
+            print("Using GStreamer backend")
+        else:
+            print(f"Using unknown backend: {camera_type}")
+        
+       # Initialize exposure settings
+        self.exposure = 0.5
+        self.exposure_unsupported = False
+        try:
+            # Attempt to disable auto-exposure (0.25 or 0 for manual control, depending on backend)
+            self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
+            self.cap.set(cv2.CAP_PROP_EXPOSURE, self.exposure)
+        except:
+            self.exposure_unsupported = True
+        
         # Define target resolution
         self.camera_x = 1920
         self.camera_y = 1080
         self.scale_feed = 0.5
         self.target_res = (round(self.camera_x*self.scale_feed), round(self.camera_y*self.scale_feed))
+
+        # Set initial exposure (default to 0, neutral setting)
+        self.cap.set(cv2.CAP_PROP_EXPOSURE, 0)
         
         # Define bounding boxes [[TopCornerX, TopCornerY, BottomCornerX, BottomCornerY], ...]
         self.bboxes = [
@@ -55,6 +79,16 @@ class WebcamApp:
         
         self.btn_edit = tk.Button(root, text="Edit Bounding Box", command=self.toggle_edit_mode)
         self.btn_edit.pack(side=tk.LEFT, padx=5, pady=10)
+
+        # Exposure slider
+        self.exposure_label = tk.Label(root, text="Exposure: Supported" if not self.exposure_unsupported else "Exposure: Unsupported")
+        self.exposure_label.pack(pady=5)
+        self.exposure_scale = tk.Scale(root, from_=0.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL, 
+                                      command=self.update_exposure, length=200)
+        self.exposure_scale.set(self.exposure)
+        self.exposure_scale.pack(pady=5)
+        if self.exposure_unsupported:
+            self.exposure_scale.config(state='disabled')
         
         self.label_states = tk.Label(root, text="Bounding Box States: []", wraplength=600)
         self.label_states.pack(pady=10)
@@ -95,6 +129,18 @@ class WebcamApp:
         
         # Display initial webcam feed
         self.update_feed()
+
+    def update_exposure(self, value):
+        if not self.exposure_unsupported:
+            try:
+                self.exposure = float(value)
+                self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0)  # Ensure auto-exposure is off
+                self.cap.set(cv2.CAP_PROP_AUTO_WB, 1.0)  # Ensure auto-exposure is off
+                self.cap.set(cv2.CAP_PROP_EXPOSURE, self.exposure)
+            except:
+                self.exposure_unsupported = True
+                self.exposure_label.config(text="Exposure: Unsupported")
+                self.exposure_scale.config(state='disabled')
 
     def send_serial_data(self):
         if self.serial_port and self.serial_port.is_open:
