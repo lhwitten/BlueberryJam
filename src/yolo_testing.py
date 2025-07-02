@@ -50,6 +50,7 @@ class WebcamApp:
         
         # Load YOLO model
         self.model = YOLO("best.pt")
+        model.to('cpu')
         
         # Initialize webcam
         self.cap = cv2.VideoCapture(0)
