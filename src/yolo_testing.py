@@ -10,6 +10,7 @@ import time
 import sys
 import glob
 import serial.tools.list_ports
+import os
 from collections import deque, Counter
 
 try:
@@ -25,6 +26,15 @@ try:
 except ImportError:
     uvc = None
     print("pyuvc not installed. UVC controls will be disabled.")
+
+# Disable MKL threading to avoid OpenMP conflicts
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+try:
+    import torch
+    torch.set_num_threads(1)
+except ImportError:
+    print("PyTorch not installed, but it is required for ultralytics.")
 
 class WebcamApp:
     def __init__(self, root):
@@ -77,7 +87,7 @@ class WebcamApp:
         self.target_res = (round(self.camera_x*self.scale_feed), round(self.camera_y*self.scale_feed))
         self.exposure_unsupported = True
         self.capture_device = None
-        self.exposure = 0.1  # Default exposure value (normalized 0 to 1)
+        self.exposure = 1  # Default exposure value (normalized 0 to 1)
 
         # Define bounding boxes [[TopCornerX, TopCornerY, BottomCornerX, BottomCornerY], ...]
         self.bboxes = [
@@ -164,8 +174,8 @@ class WebcamApp:
         self.serial_port = None
         self.serial_port1 = None
         try:
-            self.serial_port = serial.Serial('/dev/cu.usbserial-0001', 9600, timeout=1)  # Adjust port as needed (e.g., '/dev/ttyUSB0')
-            self.serial_port = serial.Serial('/dev/cu.usbserial-21203', 9600, timeout=1)  # Adjust port as needed (e.g., '/dev/ttyUSB0')
+            self.serial_port = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)  # Adjust port as needed (e.g., '/dev/ttyUSB0')
+            #self.serial_port = serial.Serial('/dev/cu.usbserial-21203', 9600, timeout=1)  # Adjust port as needed (e.g., '/dev/ttyUSB0')
         except serial.SerialException as e:
             print(f"Failed to open serial port: {e}")
         
