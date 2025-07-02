@@ -1,3 +1,9 @@
+import os
+# Set environment vars before any scientific libs are imported
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 import tkinter as tk
 from PIL import Image, ImageTk
 import cv2
@@ -10,7 +16,6 @@ import time
 import sys
 import glob
 import serial.tools.list_ports
-import os
 from collections import deque, Counter
 
 try:
@@ -32,6 +37,8 @@ os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 try:
     import torch
+    print(torch.__version__)
+    print(torch.__config__.show())
     torch.set_num_threads(1)
 except ImportError:
     print("PyTorch not installed, but it is required for ultralytics.")
