@@ -40,6 +40,7 @@ try:
     print(torch.__version__)
     print(torch.__config__.show())
     torch.set_num_threads(1)
+    torch.backends.nnpack.enabled = False
 except ImportError:
     print("PyTorch not installed, but it is required for ultralytics.")
 
