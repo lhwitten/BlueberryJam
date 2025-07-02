@@ -10,6 +10,8 @@ import time
 import sys
 import glob
 import serial.tools.list_ports
+from collections import deque, Counter
+
 try:
     from AVFoundation import AVCaptureDevice, AVCaptureSession, AVCaptureDeviceInput
     from Foundation import NSBundle
@@ -30,7 +32,7 @@ class WebcamApp:
         self.root.title("YOLO Webcam Segmentation")
         
         # Load YOLO model
-        self.model = YOLO("/Users/jasper/Desktop/blueberry sorter/BlueberryJam/runs/detect/train4/weights/best.pt")
+        self.model = YOLO("best.pt")
         
         # Initialize webcam
         self.cap = cv2.VideoCapture(0)
@@ -144,6 +146,11 @@ class WebcamApp:
         self.selected_bbox_idx = None
         self.drag_mode = None  # 'move', 'top-left', 'top-right', 'bottom-left', 'bottom-right'
         self.proximity = 10  # Pixels for edge/corner detection
+
+        # Carousel and ejection ports
+        self.carousel_slots = deque([None]*20, maxlen=20)  # 20-slot queue
+        self.eject_ports = {"RIPE": 5, "UNDERRIPE": 8, "OVERRIPE": 11}
+        self.class_labels = ["RIPE", "UNDERRIPE", "OVERRIPE"]
         
         # Bind mouse events for drawing and editing
         self.canvas.bind("<Button-1>", self.start_action)
@@ -461,6 +468,7 @@ class WebcamApp:
             else:
                 self.canvas.itemconfig(self.image_id, image=self.photo)
             self.draw_bboxes()
+            self.classify_and_update_queue()
     
     def clear(self):
         self.show_segmented = False
@@ -472,6 +480,82 @@ class WebcamApp:
     def __del__(self):
         if hasattr(self, 'cap') and self.cap.isOpened():
             self.cap.release()
+
+    def classify_and_update_queue(self):
+        # 1. Take picture and classify slots 0, 1, 2
+        ret, frame = self.cap.read()
+        if not ret:
+            print("Camera read failed")
+            return
+
+        frame = cv2.resize(frame, self.target_res)
+        results = self.model(frame)
+        slot_classifications = [None, None, None]
+
+        # For each bbox (slots 0,1,2), get the most confident class
+        for i, bbox in enumerate(self.bboxes[:3]):
+            slot_classifications[i] = self.classify_bbox(results, bbox)
+
+        # 2. Average for slot 3 (weighted)
+        if all(slot_classifications):
+            # Example: slot 1 gets double weight
+            counts = Counter()
+            counts[slot_classifications[0]] += 1
+            counts[slot_classifications[1]] += 2
+            counts[slot_classifications[2]] += 1
+            best_class = counts.most_common(1)[0][0]
+        else:
+            best_class = None
+
+        # 3. Add to queue at position 3 (simulate rotation)
+        self.carousel_slots.append(best_class)
+
+        # 4. Check ejection ports
+        eject_array = [0, 0, 0]
+        for idx, label in enumerate(self.class_labels):
+            port_pos = self.eject_ports[label]
+            slot_val = self.carousel_slots[port_pos-1]  # -1 because 0-based
+            if slot_val == label:
+                eject_array[idx] = 1
+
+        # 5. Send serial commands
+        self.send_eject_serial(eject_array)
+        self.send_next_serial()
+
+        print(f"Classified: {slot_classifications}, Added: {best_class}, Queue: {list(self.carousel_slots)}")
+        print(f"Eject: {eject_array}")
+
+    def classify_bbox(self, results, bbox):
+        # Find the most confident class in bbox
+        for result in results:
+            if result.boxes and result.boxes.xyxy is not None:
+                boxes = result.boxes.xyxy.cpu().numpy()
+                classes = result.boxes.cls.cpu().numpy()
+                scores = result.boxes.conf.cpu().numpy()
+                class_names = result.names
+                for box, cls, score in zip(boxes, classes, scores):
+                    x1, y1, x2, y2 = box[:4]
+                    centroid_x = (x1 + x2) / 2
+                    centroid_y = (y1 + y2) / 2
+                    bx1, by1, bx2, by2 = bbox
+                    if bx1 <= centroid_x <= bx2 and by1 <= centroid_y <= by2:
+                        return class_names[int(cls)]
+        return None
+
+    def send_eject_serial(self, eject_array):
+        if self.serial_port and self.serial_port.is_open:
+            try:
+                data = json.dumps(eject_array) + '\n'
+                self.serial_port.write(data.encode('utf-8'))
+            except serial.SerialException as e:
+                print(f"serial write error: {e}")
+
+    def send_next_serial(self):
+        if self.serial_port and self.serial_port.is_open:
+            try:
+                self.serial_port.write(b"NEXT\n")
+            except serial.SerialException as e:
+                print(f"serial write error: {e}")
 
 if __name__ == "__main__":
     root = tk.Tk()
