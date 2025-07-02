@@ -10,6 +10,19 @@ import time
 import sys
 import glob
 import serial.tools.list_ports
+try:
+    from AVFoundation import AVCaptureDevice, AVCaptureSession, AVCaptureDeviceInput
+    from Foundation import NSBundle
+    AVFOUNDATION_AVAILABLE = True
+    print("AVFoundation is available")
+except ImportError:
+    AVFOUNDATION_AVAILABLE = False
+    print("AVFoundation is not available, exposure control will be disabled")
+try:
+    import uvc
+except ImportError:
+    uvc = None
+    print("pyuvc not installed. UVC controls will be disabled.")
 
 class WebcamApp:
     def __init__(self, root):
@@ -17,7 +30,7 @@ class WebcamApp:
         self.root.title("YOLO Webcam Segmentation")
         
         # Load YOLO model
-        self.model = YOLO("yolo11n-seg.pt")
+        self.model = YOLO("/Users/jasper/Desktop/blueberry sorter/BlueberryJam/runs/detect/train4/weights/best.pt")
         
         # Initialize webcam
         self.cap = cv2.VideoCapture(0)
@@ -35,25 +48,35 @@ class WebcamApp:
         else:
             print(f"Using unknown backend: {camera_type}")
         
-       # Initialize exposure settings
-        self.exposure = 0.5
-        self.exposure_unsupported = False
-        try:
-            # Attempt to disable auto-exposure (0.25 or 0 for manual control, depending on backend)
-            self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
-            self.cap.set(cv2.CAP_PROP_EXPOSURE, self.exposure)
-        except:
-            self.exposure_unsupported = True
+        # Initialize UVC device
+        self.uvc_device = None
+        self.uvc_controls = {}
+        if uvc:
+            print("Initializing UVC device...")
+            try:
+                # List UVC devices
+                print("Listing UVC devices...")
+                devices = uvc.device_list()
+                if devices:
+                    print(f"Found {len(devices)} UVC devices")
+                    self.uvc_device = uvc.Capture(devices[0]['uid'])
+                    print(f"Using UVC device: {self.uvc_device}")
+                    # Get available controls (e.g., exposure, brightness)
+                    for ctrl in self.uvc_device.controls:
+                        print(f"Control: {ctrl.display_name} (ID: {ctrl.id}, Type: {ctrl.type})")
+                        self.uvc_controls[ctrl.display_name] = ctrl
+            except Exception as e:
+                print(f"UVC initialization failed: {e}")
         
         # Define target resolution
         self.camera_x = 1920
         self.camera_y = 1080
         self.scale_feed = 0.5
         self.target_res = (round(self.camera_x*self.scale_feed), round(self.camera_y*self.scale_feed))
+        self.exposure_unsupported = True
+        self.capture_device = None
+        self.exposure = 0.1  # Default exposure value (normalized 0 to 1)
 
-        # Set initial exposure (default to 0, neutral setting)
-        self.cap.set(cv2.CAP_PROP_EXPOSURE, 0)
-        
         # Define bounding boxes [[TopCornerX, TopCornerY, BottomCornerX, BottomCornerY], ...]
         self.bboxes = [
             [100, 100, 250, 250],  # Box 1
@@ -92,6 +115,20 @@ class WebcamApp:
         
         self.label_states = tk.Label(root, text="Bounding Box States: []", wraplength=600)
         self.label_states.pack(pady=10)
+
+        self.auto_capture_running = False
+        self.auto_capture_interval = tk.IntVar(value=5)
+        self.auto_capture_dir = tk.StringVar(value="/Users/jasper/Desktop/blueberry sorter/BlueberryJam/auto_captures")
+
+        self.entry_interval = tk.Entry(root, textvariable=self.auto_capture_interval, width=5)
+        self.entry_interval.pack(side=tk.LEFT, padx=5)
+        self.label_interval = tk.Label(root, text="seconds")
+        self.label_interval.pack(side=tk.LEFT)
+
+        self.entry_dir = tk.Entry(root, textvariable=self.auto_capture_dir, width=40)
+        self.entry_dir.pack(side=tk.LEFT, padx=5)
+        self.btn_auto_capture = tk.Button(root, text="Start Auto Capture", command=self.toggle_auto_capture)
+        self.btn_auto_capture.pack(side=tk.LEFT, padx=5)
         
         # State variables
         self.show_segmented = False
@@ -129,18 +166,90 @@ class WebcamApp:
         
         # Display initial webcam feed
         self.update_feed()
+    
+    def toggle_auto_capture(self):
+        if not self.auto_capture_running:
+            self.auto_capture_running = True
+            self.btn_auto_capture.config(text="Stop Auto Capture")
+            self.auto_capture()
+        else:
+            self.auto_capture_running = False
+            self.btn_auto_capture.config(text="Start Auto Capture")
 
-    def update_exposure(self, value):
-        if not self.exposure_unsupported:
+    def auto_capture(self):
+        if not self.auto_capture_running:
+            return
+        ret, frame = self.cap.read()
+        if ret:
+            frame = cv2.resize(frame, self.target_res)
+            directory = self.auto_capture_dir.get()
+            import os
+            os.makedirs(directory, exist_ok=True)
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            filename = f"{directory}/capture_{timestamp}.jpg"
+            cv2.imwrite(filename, frame)
+            print(f"Saved: {filename}")
+        interval = self.auto_capture_interval.get()
+        self.root.after(max(1000, int(interval * 1000)), self.auto_capture)
+
+    def update_uvc_control(self, control_name, value):
+        if self.uvc_device and control_name in self.uvc_controls:
             try:
-                self.exposure = float(value)
-                self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0)  # Ensure auto-exposure is off
-                self.cap.set(cv2.CAP_PROP_AUTO_WB, 1.0)  # Ensure auto-exposure is off
-                self.cap.set(cv2.CAP_PROP_EXPOSURE, self.exposure)
+                self.uvc_controls[control_name].value = int(value)
+            except Exception as e:
+                print(f"Failed to set {control_name}: {e}")
+    
+    def check_exposure_support_AVF(self):
+                # Initialize AVFoundation for exposure control
+        if AVFOUNDATION_AVAILABLE:
+            devices = AVCaptureDevice.devices()
+            print(f"Found {len(devices)} AVFoundation devices")
+            for device in devices:
+                if device.hasMediaType_('vide'):
+                    self.capture_device = device
+                    print(f"Using AVFoundation device: {device.localizedName()}")
+                    break
+            if self.capture_device:
+                try:
+                    self.set_exposure_avf(self.exposure)
+                    # Check if exposure adjustment is supported
+                    if self.capture_device.isExposureModeSupported_(0):  # AVCaptureExposureModeContinuousAutoExposure
+                        print("Exposure adjustment lock supported")
+                        self.exposure_unsupported = False
+                    elif self.capture_device.isExposureModeSupported_(1):
+                        print("autoExpose supported")
+                        self.exposure_unsupported = False
+                    elif self.capture_device.isExposureModeSupported_(2):
+                        print("ContinuousAutoExpose supported")
+                        self.exposure_unsupported = False
+                    elif self.capture_device.isExposureModeSupported_(3):
+                        print("custom exposure supported")
+                        self.exposure_unsupported = False
+                    else:
+                        print("Exposure adjustment not supported")
+                        #self.exposure_unsupported = True
+                except:
+                    pass
+
+    def set_exposure_avf(self, value):
+        if self.capture_device and not self.exposure_unsupported:
+            try:
+                # Lock device for configuration
+                self.capture_device.lockForConfiguration_(None)
+                # Map 0-1 range to camera's exposure range
+                min_exposure = self.capture_device.minExposureTargetBias
+                max_exposure = self.capture_device.maxExposureTargetBias
+                exposure_value = min_exposure + (max_exposure - min_exposure) * value
+                self.capture_device.setExposureTargetBias_(exposure_value)
+                self.capture_device.unlockForConfiguration()
             except:
                 self.exposure_unsupported = True
                 self.exposure_label.config(text="Exposure: Unsupported")
                 self.exposure_scale.config(state='disabled')
+    
+    def update_exposure(self, value):
+        self.exposure = float(value)
+        self.set_exposure(self.exposure)
 
     def send_serial_data(self):
         if self.serial_port and self.serial_port.is_open:
@@ -266,6 +375,8 @@ class WebcamApp:
             self.drag_mode = None
             self.start_x = None
             self.start_y = None
+
+    
     
     def draw_bboxes(self):
         # Clear existing bounding box items
