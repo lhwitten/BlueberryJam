@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import ttk
 from PIL import Image, ImageTk
 import cv2
 from ultralytics import YOLO
@@ -56,9 +57,9 @@ class WebcamApp:
 
         # Define bounding boxes [[TopCornerX, TopCornerY, BottomCornerX, BottomCornerY], ...]
         self.bboxes = [
-            [468, 36, 812, 534], # Box 1
-            [204, 40, 444, 530], # Box 2
-            [15, 202, 190, 537], # Box 3
+            [655, 17, 928, 532], #Box 0
+            [336, 15, 640, 533], #Box 1
+            [16, 16, 322, 532], #Box 2  
         ]
         
         # Initialize state for each bounding box
@@ -113,11 +114,10 @@ class WebcamApp:
 
         # PH trigger setup
         self.ph_triggers_received = set()
-        self.expected_ph_triggers = {"PH1", "PH2", "PH3"}
+        self.expected_ph_triggers = {"1", "2", "3"}
         #self.root.after(100, self.serial_listener)
 
         # --- PH trigger emoji indicators ---
-        self.ph_states = {"PH1": False, "PH2": False, "PH3": False}
         self.ph_emoji_labels = {}
         self.ph_frame = tk.Frame(serial_status_container)
         self.ph_frame.grid(row=0, column=1, sticky="w", padx=(10,0))
@@ -131,31 +131,35 @@ class WebcamApp:
         self.serial_port_addr = port_list[0] if port_list else ''
         self.serial_port_var = tk.StringVar(value=self.serial_port_addr)
 
-        self.serial_port_dropdown = tk.OptionMenu(serial_frame, self.serial_port_var, *port_list)
-        self.serial_port_dropdown.config(width=25)
+        # Replace OptionMenu with Combobox
+        self.serial_port_dropdown = ttk.Combobox(serial_frame, textvariable=self.serial_port_var, width=25)
+        self.serial_port_dropdown['values'] = port_list
+        if port_list:
+            self.serial_port_dropdown.set(port_list[0])
         self.serial_port_dropdown.pack(side=tk.LEFT, padx=2)
 
-        self.btn_refresh_ports = tk.Button(serial_frame, text="Refresh", command=self.refresh_ports)
+        # Replace tk Buttons with ttk Buttons
+        self.btn_refresh_ports = ttk.Button(serial_frame, text="Refresh", command=self.refresh_ports)
         self.btn_refresh_ports.pack(side=tk.LEFT, padx=2)
 
-        self.btn_connect_serial = tk.Button(serial_frame, text="Connect", command=self.connect_serial)
+        self.btn_connect_serial = ttk.Button(serial_frame, text="Connect", command=self.connect_serial)
         self.btn_connect_serial.pack(side=tk.LEFT, padx=2)
 
         self.serial_port = None
         #self.connect_serial()
 
-        tk.Frame(controls_frame, height=2, bg="#cccccc").pack(fill=tk.X, pady=4)  # Separator
+        ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
 
         # Actions
         btn_frame = tk.Frame(controls_frame)
         btn_frame.pack(fill=tk.X, pady=2)
         tk.Label(btn_frame, text="Actions:").pack(side=tk.LEFT)
-        self.btn_capture = tk.Button(btn_frame, text="Capture & Segment", command=self.capture)
+        self.btn_capture = ttk.Button(btn_frame, text="Capture & Segment", command=self.capture)
         self.btn_capture.pack(side=tk.LEFT, padx=2)
-        self.btn_clear = tk.Button(btn_frame, text="Clear", command=self.clear)
+        self.btn_clear = ttk.Button(btn_frame, text="Clear", command=self.clear)
         self.btn_clear.pack(side=tk.LEFT, padx=2)
 
-        tk.Frame(controls_frame, height=2, bg="#cccccc").pack(fill=tk.X, pady=4)  # Separator
+        ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
 
         # Bounding Boxes
         bbox_frame = tk.Frame(controls_frame)
@@ -178,19 +182,20 @@ class WebcamApp:
                 self.draw_mode = False
                 self.draw_toggle.deselect()
 
-        self.draw_toggle = tk.Checkbutton(
-            bbox_frame, text="Draw", indicatoron=True,
+        # Replace tk Checkbuttons with ttk Checkbuttons
+        self.draw_toggle = ttk.Checkbutton(
+            bbox_frame, text="Draw",
             command=draw_toggle_command
         )
         self.draw_toggle.pack(side=tk.LEFT, padx=2)
 
-        self.edit_toggle = tk.Checkbutton(
-            bbox_frame, text="Edit", indicatoron=True,
+        self.edit_toggle = ttk.Checkbutton(
+            bbox_frame, text="Edit",
             command=edit_toggle_command
         )
         self.edit_toggle.pack(side=tk.LEFT, padx=2)
 
-        tk.Frame(controls_frame, height=2, bg="#cccccc").pack(fill=tk.X, pady=4)  # Separator
+        ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
 
         # Exposure
         exposure_frame = tk.Frame(controls_frame)
@@ -198,14 +203,17 @@ class WebcamApp:
         tk.Label(exposure_frame, text="Exposure:").pack(side=tk.LEFT)
         self.exposure_label = tk.Label(exposure_frame, text="Supported" if not self.exposure_unsupported else "Unsupported")
         self.exposure_label.pack(side=tk.LEFT, padx=2)
-        self.exposure_scale = tk.Scale(exposure_frame, from_=0.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL, 
-                  command=self.update_exposure, length=120)
+        self.exposure_value_label = tk.Label(exposure_frame, text="0.5")
+        self.exposure_value_label.pack(side=tk.RIGHT, padx=2)
+        # Replace tk Scale with ttk Scale for exposure
+        self.exposure_scale = ttk.Scale(exposure_frame, from_=0.0, to=1.0, orient=tk.HORIZONTAL,
+                                      command=self.update_exposure, length=120)
         self.exposure_scale.set(self.exposure)
         self.exposure_scale.pack(side=tk.LEFT, padx=2)
         if self.exposure_unsupported:
             self.exposure_scale.config(state='disabled')
 
-        tk.Frame(controls_frame, height=2, bg="#cccccc").pack(fill=tk.X, pady=4)  # Separator
+        ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
 
         # Auto Capture
         auto_frame = tk.Frame(controls_frame)
@@ -219,33 +227,50 @@ class WebcamApp:
         tk.Label(auto_frame, text="seconds").grid(row=0, column=2, sticky="w")
         self.entry_dir = tk.Entry(auto_frame, textvariable=self.auto_capture_dir, width=30)
         self.entry_dir.grid(row=1, column=0, columnspan=3, sticky="we", padx=2, pady=(2,0))
-        self.btn_auto_capture = tk.Button(auto_frame, text="Start Auto Capture", command=self.toggle_auto_capture)
+        # Replace auto capture button
+        self.btn_auto_capture = ttk.Button(auto_frame, text="Start Auto Capture", command=self.toggle_auto_capture)
         self.btn_auto_capture.grid(row=0, column=3, rowspan=2, padx=2, sticky="ns")
         auto_frame.grid_columnconfigure(0, weight=0)
         auto_frame.grid_columnconfigure(1, weight=0)
         auto_frame.grid_columnconfigure(2, weight=0)
         auto_frame.grid_columnconfigure(3, weight=0)
 
-        tk.Frame(controls_frame, height=2, bg="#cccccc").pack(fill=tk.X, pady=4)  # Separator
+        ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
 
         # Motor Control
         motor_frame = tk.Frame(controls_frame)
         motor_frame.pack(fill=tk.X, pady=2)
         tk.Label(motor_frame, text="Conveyor Speed:").grid(row=0, column=0, sticky="w")
+        # Replace conveyor speed slider with ttk version
         self.conveyor_speed = tk.IntVar(value=5)
-        self.slider_conveyor = tk.Scale(
+        self.conveyor_speed_label = tk.Label(motor_frame, text="5")
+        self.conveyor_speed_label.grid(row=0, column=2, padx=2)
+        self.slider_conveyor = ttk.Scale(
             motor_frame, from_=0, to=9, orient=tk.HORIZONTAL, variable=self.conveyor_speed,
-            showvalue=True, length=120
+            command=self.update_conveyor_speed, length=120
         )
         self.slider_conveyor.grid(row=0, column=1, padx=2, sticky="w")
+
+        # Add number of shakes control
+        tk.Label(motor_frame, text="Number of Shakes:").grid(row=1, column=0, sticky="w", pady=(5,0))
+        self.num_shakes = tk.IntVar(value=3)
+        self.spinbox_shakes = ttk.Spinbox(
+            motor_frame, 
+            from_=1, 
+            to=10,
+            textvariable=self.num_shakes,
+            width=5
+        )
+        self.spinbox_shakes.grid(row=1, column=1, sticky="w", padx=2, pady=(5,0))
+
         motor_frame.grid_columnconfigure(0, weight=0)
         motor_frame.grid_columnconfigure(1, weight=1)
 
-        tk.Frame(controls_frame, height=2, bg="#cccccc").pack(fill=tk.X, pady=4)  # Separator
+        ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
 
         # Carousel and ejection ports
         self.carousel_slots = deque([None]*20, maxlen=20)  # 20-slot queue
-        self.eject_ports = {"RIPE": 5, "UNDERRIPE": 8, "OVERRIPE": 11}
+        self.eject_ports = {"RIPE": 18, "UNDERRIPE": 16, "OVERRIPE": 14}
         self.class_labels = ["RIPE", "UNDERRIPE", "OVERRIPE"]
 
         # --- Add Carousel Status Canvas at the bottom of controls column ---
@@ -326,10 +351,8 @@ class WebcamApp:
     def refresh_ports(self):
         ports = serial.tools.list_ports.comports()
         port_list = [port.device for port in ports]
-        menu = self.serial_port_dropdown["menu"]
-        menu.delete(0, "end")
-        for port in port_list:
-            menu.add_command(label=port, command=lambda value=port: self.serial_port_var.set(value))
+        # Update Combobox values instead of recreating menu
+        self.serial_port_dropdown['values'] = port_list
         if port_list:
             self.serial_port_var.set(port_list[0])
         else:
@@ -367,6 +390,7 @@ class WebcamApp:
         if not self.auto_capture_running:
             return
         ret, frame = self.cap.read()
+        self.send_eject_serial([1,1,1])
         if ret:
             frame = cv2.resize(frame, self.target_res)
             directory = self.auto_capture_dir.get()
@@ -435,7 +459,9 @@ class WebcamApp:
     #             self.exposure_scale.config(state='disabled')
     
     def update_exposure(self, value):
+        # Update exposure method to handle string value from ttk Scale
         self.exposure = float(value)
+        self.exposure_value_label.config(text=f"{float(value):.1f}")
         # Also set exposure via OpenCV (if supported)
         if hasattr(self, 'cap') and self.cap is not None:
             # Map normalized value (0-1) to a typical exposure range, e.g., -8 to -1 for many webcams
@@ -443,16 +469,8 @@ class WebcamApp:
             exp_val = float(min_exp + (max_exp - min_exp) * self.exposure)
             self.cap.set(cv2.CAP_PROP_EXPOSURE, exp_val)
 
-    def send_serial_data(self):
-        if self.serial_port and self.serial_port.is_open:
-            try:
-                # convert bbox_states to json and send
-                data = json.dumps(self.bbox_states)+'\n'
-                self.serial_port.write(data.encode('utf-8'))
-            except serial.SerialException as e:
-                print(f"serial write error: {e}")
-        # Schedule next transmission
-        # self.root.after(3000, self.send_serial_data)
+    def update_conveyor_speed(self, value):
+        self.conveyor_speed_label.config(text=str(int(float(value))))
     
     def start_action(self, event):
         if self.draw_mode:
@@ -834,7 +852,8 @@ class WebcamApp:
             try:
                 # Convert eject_array (e.g., [0, 0, 1]) to string "001"
                 speed = self.conveyor_speed.get() #if hasattr(self.conveyor_speed, "get") else self.conveyor_speed
-                data = ''.join(str(x) for x in eject_array) + '1' + str(speed) + str(speed) + '\n'
+                shakes = self.num_shakes.get() #if hasattr(self.num_shakes, "get") else self.num_shakes
+                data = ''.join(str(x) for x in eject_array) + '1' + str(shakes) + str(speed) + '\n'
                 self.serial_port.write(data.encode('utf-8'))
                 print(f"Sent eject command: {data.strip()}")
             except serial.SerialException as e:
@@ -856,8 +875,8 @@ class WebcamApp:
                         print(f"Received trigger: {line}")
                         self.ph_triggers_received.add(line)
                         if self.ph_triggers_received == self.expected_ph_triggers:
-                            self.classify_and_update_queue()
-                            self.ph_triggers_received.clear()
+                        #     self.classify_and_update_queue()
+                             self.ph_triggers_received.clear()
             except Exception as e:
                 print(f"Serial read error: {e}")
         # self.root.after(100, self.serial_listener)

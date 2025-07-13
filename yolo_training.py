@@ -1,12 +1,14 @@
 from ultralytics import YOLO
 
-model = YOLO("yolo11n.pt")
+# Initialize a new YOLO model for segmentation
+model = YOLO('yolov8n-seg.pt')  # Load the segmentation base model
 
 model.train(
-data="/Users/jasper/Desktop/blueberry sorter/dataset1-yolov11/data.yaml", # Path to Roboflow-exported YAML
-epochs=160,
-patience=50,
-imgsz=640,
-batch=8, # Set your desired batch size here
-device="mps" # 0 for GPU, -1 for CPU
+    data='/Users/jasper/Desktop/blueberry sorter/jully-11-blueberry-training-data/data.yaml',  # Path to your dataset YAML file
+    epochs=150,
+    patience=70,
+    imgsz=640,
+    batch=8,
+    device="mps",
+    task='segment'  # Specify segmentation task
 )
