@@ -3,11 +3,8 @@ from tkinter import ttk
 from PIL import Image, ImageTk
 import cv2
 from ultralytics import YOLO
-import numpy as np
 import time
-import sys
-from collections import deque, Counter
-import torch
+from collections import deque
 
 # Import our custom modules
 from bbox_manager import BoundingBoxManager
