@@ -21,7 +21,7 @@ class WebcamApp:
         
         # Load YOLO model
         # self.model = YOLO("/Users/jasper/Desktop/blueberry sorter/BlueberryJam/runs/detect/train4/weights/best.pt")
-        self.model = YOLO("/Users/jasper/Desktop/blueberry sorter/BlueberryJam/runs/segment/train6/weights/best.pt")
+        self.model = YOLO("/Users/jasper/Desktop/blueberry sorter/BlueberryJam/runs/segment/train5/weights/best.pt")
         
         # Initialize webcam
         cv2.OPENCV_VIDEOIO_DEBUG=1
@@ -93,6 +93,7 @@ class WebcamApp:
 
         # Initialize modules
         self.bbox_manager = BoundingBoxManager(self.canvas, self.target_res)
+        self.bbox_states = [[] for _ in range(self.bbox_manager.get_bbox_count())]  # Initialize with empty state per bbox
         self.serial_manager = SerialManager(root)
         
         # Set up callbacks
@@ -208,22 +209,33 @@ class WebcamApp:
         motor_frame = tk.Frame(controls_frame)
         motor_frame.pack(fill=tk.X, pady=2)
 
-        # Conveyor Speed Control
+        # SHAKES:
         motor_frame.pack(fill=tk.X, pady=2)
-        tk.Label(motor_frame, text="Conveyor Speed:").pack(side=tk.LEFT, padx=2)
-        self.conveyor_speed = tk.IntVar(value=5)
-        self.spinbox_conveyor_speed = ttk.Spinbox(
-            motor_frame, from_=0, to=9, textvariable=self.conveyor_speed, width=5
-        )
-        self.spinbox_conveyor_speed.pack(side=tk.LEFT, padx=2)
+        tk.Label(motor_frame, text="shake count:").pack(side=tk.LEFT, padx=2)
+        self.conveyor_param_1 = tk.IntVar(value=5)
+        self.spinbox_c1 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_1, width=1)
+        self.spinbox_c1.pack(side=tk.LEFT, padx=2)
 
-        # Number of Shakes Control
-        tk.Label(motor_frame, text="Number of Shakes:").pack(side=tk.LEFT, padx=2)
-        self.num_shakes = tk.IntVar(value=3)
-        self.spinbox_shakes = ttk.Spinbox(
-            motor_frame, from_=1, to=10, textvariable=self.num_shakes, width=5
-        )
-        self.spinbox_shakes.pack(side=tk.LEFT, padx=2)
+        tk.Label(motor_frame, text="PPS:").pack(side=tk.LEFT, padx=2)
+        self.conveyor_param_2 = tk.IntVar(value=5)
+        self.spinbox_c2 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_2, width=1)
+        self.spinbox_c2.pack(side=tk.LEFT, padx=2)
+
+        tk.Label(motor_frame, text="N:").pack(side=tk.LEFT, padx=2)
+        self.conveyor_param_3 = tk.IntVar(value=5)
+        self.spinbox_c3 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_3, width=1)
+        self.spinbox_c3.pack(side=tk.LEFT, padx=2)
+
+        #DROP off controlls:
+        tk.Label(motor_frame, text="drop PPS:").pack(side=tk.LEFT, padx=2)
+        self.conveyor_param_4 = tk.IntVar(value=5)
+        self.spinbox_c4 = ttk.Spinbox( motor_frame, from_=1, to=10, textvariable=self.conveyor_param_4, width=1)
+        self.spinbox_c4.pack(side=tk.LEFT, padx=2)
+
+        tk.Label(motor_frame, text="N:").pack(side=tk.LEFT, padx=2)
+        self.conveyor_param_5 = tk.IntVar(value=5)
+        self.spinbox_c5 = ttk.Spinbox( motor_frame, from_=1, to=10, textvariable=self.conveyor_param_5, width=1)
+        self.spinbox_c5.pack(side=tk.LEFT, padx=2)
 
         ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
 
@@ -282,8 +294,8 @@ class WebcamApp:
         self.btn_canvas = tk.Canvas(btn_frame, width=120, height=50, highlightthickness=0)
         self.btn_canvas.pack(side=tk.LEFT, padx=2, pady=5)
         self.btn_canvas.bind("<Button-1>", on_button_click)
-        self.btn_canvas.bind("<Enter>", lambda e: self.btn_canvas.config(cursor="hand2"))
-        self.btn_canvas.bind("<Leave>", lambda e: self.btn_canvas.config(cursor=""))
+        # self.btn_canvas.bind("<Enter>", lambda e: self.btn_canvas.config(cursor="hand2"))
+        # self.btn_canvas.bind("<Leave>", lambda e: self.btn_canvas.config(cursor=""))
         
         # Initialize button appearance
         update_button_appearance(False)
@@ -300,10 +312,10 @@ class WebcamApp:
         self.carousel_widget = CarouselStatusWidget(controls_frame)
 
         # --- Feedback/State output (row by row) ---
-        self.label_states = tk.Label(feedback_frame, text="Bounding box states: []", wraplength=600, anchor="w", justify="left")
+        self.label_states = tk.Label(feedback_frame, text="Bounding box states: \n \n \n",wraplength=800, anchor="w", justify="left")
         self.label_states.grid(row=3, column=0, sticky="w")
 
-        self.label_eject_array = tk.Label(feedback_frame, text="Eject array: []", wraplength=600, anchor="w", justify="left")
+        self.label_eject_array = tk.Label(feedback_frame, text="Eject array: []", anchor="w", justify="left")
         self.label_eject_array.grid(row=4, column=0, sticky="w", pady=(5,0))
 
         self.label_serial_status = tk.Label(feedback_frame, text="Last Serial Command: None", wraplength=600, anchor="w", justify="left")
@@ -374,7 +386,7 @@ class WebcamApp:
             return
         ret, frame = self.cap.read()
         # Send test eject command during auto capture
-        self.serial_manager.send_eject_command([1, 1, 1], self.conveyor_speed.get(), self.num_shakes.get())
+        self.send_eject_command_with_ui_values([1,1,1]);
         if ret:
             frame = cv2.resize(frame, self.target_res)
             self.save_image(frame)
@@ -392,8 +404,8 @@ class WebcamApp:
             exp_val = float(min_exp + (max_exp - min_exp) * self.exposure)
             self.cap.set(cv2.CAP_PROP_EXPOSURE, exp_val)
 
-    def update_conveyor_speed(self, value):
-        self.conveyor_speed_label.config(text=str(int(float(value))))
+    # def update_conveyor_param_1(self, value):
+    #     self.conveyor_param_1_label.config(text=str(int(float(value))))
     
     # def on_bbox_click(self, index):
     #     # Set the clicked bbox as the selected bbox and redraw
@@ -425,34 +437,44 @@ class WebcamApp:
         ret, frame = self.cap.read()
         if ret:
             frame = cv2.resize(frame, self.target_res)
-            self.bbox_manager.clear_states()
-            bbox_states = self.bbox_manager.get_bbox_states()
-            bboxes = self.bbox_manager.get_bboxes()
             results = self.model(frame)
-            self.update_bbox_states(results, bboxes, bbox_states)
+            self.classify_and_update_bboxes(results, add_to_carousel=False);
             self.draw_yolo_results(results)
 
-    def update_bbox_states(self, results, bboxes, bbox_states):
-        """Update bounding box states based on YOLO results."""
-        for result in results:
-            if result.boxes and result.boxes.xyxy is not None:
-                boxes = result.boxes.xyxy.cpu().numpy()
-                classes = result.boxes.cls.cpu().numpy()
-                class_names = result.names
-                for box, cls in zip(boxes, classes):
-                    x1, y1, x2, y2 = box[:4]
-                    centroid_x = (x1 + x2) / 2
-                    centroid_y = (y1 + y2) / 2
-                    for i, bbox in enumerate(bboxes):
-                        bx1, by1, bx2, by2 = bbox
-                        if bx1 <= centroid_x <= bx2 and by1 <= centroid_y <= by2:
-                            label = class_names[int(cls)]
-                            if label not in bbox_states[i]:
-                                bbox_states[i].append(label)
-        
-        # Update bbox states in manager
-        self.bbox_manager.set_bbox_states(bbox_states)
-        state_text = "Bounding Box States: " + str(bbox_states)
+    def reset_bbox_states(self):
+        """Reset bounding box states to empty lists."""
+        self.bbox_states = [[] for _ in range(self.bbox_manager.get_bbox_count())]
+
+    def add_bboxes_states(self, index, state):
+        """Update the label displaying bounding box states."""
+        self.bbox_states[index].append(state)
+        state_text = "Bounding Box States: " + str(self.bbox_states)
+        self.label_states.config(text=state_text)
+
+    def set_bboxes_states(self, index, state):
+        """
+        Update the label displaying bounding box states.
+        Displays formatted class, score, and centroid for each detection.
+        Example: BOX1: UNDERRIPE (0.90 x:12 y:15) | RIPE (0.70 x:11 y:13)
+        """
+        self.bbox_states[index] = state
+
+        def format_detection(det):
+            cls = det.get('class', 'N/A')
+            score = det.get('score', 0)
+            cx, cy = det.get('centroid', (0, 0))
+            return f"{cls} ({score:.2f} x:{int(round(cx))} y:{int(round(cy))})"
+
+        lines = []
+        for i, detections in enumerate(self.bbox_states):
+            if detections:
+                det_strs = [format_detection(det) for det in detections]
+                line = f"BOX{i+1}: " + " | ".join(det_strs)
+            else:
+                line = f"BOX{i+1}: None"
+            lines.append(line)
+
+        state_text = "Bounding Box States:\n" + "\n".join(lines)
         self.label_states.config(text=state_text)
 
     def draw_yolo_results(self, results):
@@ -519,9 +541,30 @@ class WebcamApp:
             self.save_image(frame)
         
         # Get current classifications for visible slots
+        self.classify_and_update_bboxes(results, add_to_carousel=True)
+
+        # 2. Check ejection ports and send serial commands
+        eject_array = self.carousel_widget.get_eject_array()
+
+        self.label_eject_array.config(text=f"Eject array: {eject_array}")
+        
+        # 3. Send serial commands
+        self.send_eject_command_with_ui_values(eject_array)
+        
+        # Update PH indicator display
+        self.ph_indicator.update_ph_emoji_labels()
+        
+        # Update statistics display
+        self.statistics_widget.update_display()
+
+    def classify_and_update_bboxes(self, results, add_to_carousel=True):
+
+        self.reset_bbox_states()  # Reset states before classifying
         bboxes = self.bbox_manager.get_bboxes()
         for i, bbox in enumerate(bboxes):
-            classification = self.classify_bbox(results, bbox)
+            classification = self.classify_bbox(i, results, bbox)
+            if not add_to_carousel:
+                continue
             if i == 0:
                 print(f"add to carousel: Slot {i} classification: {classification}")
                 # For the first slot, create a new Blueberry object and add it to the carousel
@@ -533,103 +576,89 @@ class WebcamApp:
                     print(f"update slot {i} classification: {classification}")
                     blueberry.add_classification_attempt(classification)
 
-        # 2. Check ejection ports and send serial commands
-        eject_array = self.carousel_widget.get_eject_array()
-
-        self.label_eject_array.config(text=f"Eject array: {eject_array}")
-        
-        # 3. Send serial commands
-        conveyor_speed = self.conveyor_speed.get()
-        num_shakes = self.num_shakes.get()
-        success, message = self.serial_manager.send_eject_command(eject_array, conveyor_speed, num_shakes)
+    def send_eject_command_with_ui_values(self, eject_array):
+        conveyor_param_1 = self.conveyor_param_1.get()
+        conveyor_param_2 = self.conveyor_param_2.get()
+        conveyor_param_3 = self.conveyor_param_3.get()
+        conveyor_param_4 = self.conveyor_param_4.get()
+        conveyor_param_5 = self.conveyor_param_5.get()
+        success, message = self.serial_manager.send_eject_command(eject_array, conveyor_param_1, conveyor_param_2, conveyor_param_3, conveyor_param_4, conveyor_param_5)
         self.label_serial_status.config(text=f"Last Serial Command: {message if success else 'Error'}")
-        
-        # Update PH indicator display
-        self.ph_indicator.update_ph_emoji_labels()
-        
-        # Update statistics display
-        self.statistics_widget.update_display()
     
-    def classify_bbox(self, results, bbox):
+    def classify_bbox(self, i, results, bbox):
         """
         Classify the bounding box using YOLO results, considering overlapping boxes and multiple berries.
-        
-        Args:
-            results: YOLO results object containing detected boxes, classes, and scores.
-            bbox: Region of interest [bx1, by1, bx2, by2].
-        
-        Returns:
-            The class label based on confidence scores and rules for multiple berries.
+        Uses centroid proximity to filter overlapping detections.
         """
         bx1, by1, bx2, by2 = bbox
-        detections = []  # Store detections within the bounding box
+        detections = []
 
         for result in results:
-            # Ensure the result contains valid bounding boxes
             if result.boxes and result.boxes.xyxy is not None:
-                boxes = result.boxes.xyxy.cpu().numpy()  # Extract bounding box coordinates
-                classes = result.boxes.cls.cpu().numpy()  # Extract class indices
-                scores = result.boxes.conf.cpu().numpy()  # Extract confidence scores
-                class_names = result.names  # Map class indices to class names
-                
+                boxes = result.boxes.xyxy.cpu().numpy()
+                classes = result.boxes.cls.cpu().numpy()
+                scores = result.boxes.conf.cpu().numpy()
+                class_names = result.names
+
                 for box, cls, score in zip(boxes, classes, scores):
                     x1, y1, x2, y2 = box[:4]
                     centroid_x = (x1 + x2) / 2
                     centroid_y = (y1 + y2) / 2
-
-                    # Check if the centroid of the detected box falls within the region of interest
                     if bx1 <= centroid_x <= bx2 and by1 <= centroid_y <= by2:
                         detections.append({
                             'class': class_names[int(cls)],
                             'score': score,
-                            'box': box
+                            #'box': box,
+                            'centroid': (centroid_x, centroid_y)
                         })
 
-        # print(f"Detections in bbox {bbox}: {detections}")
-
-        # Handle overlapping boxes
+        # Filter overlapping detections by centroid proximity (e.g., within 10 pixels)
         filtered_detections = []
-        for i, det1 in enumerate(detections):
-            is_duplicate = False
-            for j, det2 in enumerate(detections):
-                if i != j:
-                    box1 = det1['box']
-                    box2 = det2['box']
-                    # Check if boxes are very similar in location (+-5 pixels)
-                    if (
-                        abs(box1[0] - box2[0]) <= 5 and
-                        abs(box1[1] - box2[1]) <= 5 and
-                        abs(box1[2] - box2[2]) <= 5 and
-                        abs(box1[3] - box2[3]) <= 5
-                    ):
-                        # Keep the detection with the higher confidence score
-                        is_duplicate = True
-                        if det1['score'] >= det2['score']:
-                            filtered_detections.append(det1)
-                        else:
-                            filtered_detections.append(det2)
-                        break
-            if not is_duplicate:
-                filtered_detections.append(det1)
-        
-        # print(f"Filtered detections: {filtered_detections}")
+        used = set()
+        for idx, det in enumerate(detections):
+            if idx in used:
+                continue
+            cx1, cy1 = det['centroid']
+            best_det = det
+            for jdx, other in enumerate(detections):
+                if jdx == idx or jdx in used:
+                    continue
+                cx2, cy2 = other['centroid']
+                if abs(cx1 - cx2) <= 10 and abs(cy1 - cy2) <= 10:
+                    # Keep the one with higher score
+                    if other['score'] > best_det['score']:
+                        best_det = other
+                    used.add(jdx)
+            filtered_detections.append(best_det)
+            used.add(idx)
 
-        # Analyze the filtered detections
+                # Remove detections under a score threshold
+        SCORE_THRESHOLD = 0.5
+        filtered_detections = [det for det in detections if det['score'] >= SCORE_THRESHOLD]
+
+        self.set_bboxes_states(i, filtered_detections)
+        print(f"Slot {i} detections: {detections}")
+        print(f"Filtered detections: {filtered_detections}")
+
         berry_classes = [det['class'] for det in filtered_detections]
         if not berry_classes:
-            return None  # No valid detections
+            return None
 
-        # Check for multiple berries and apply rules
+        # Multiple berry rules
         if len(berry_classes) > 1:
             if "OVERRIPE" in berry_classes:
                 return "OVERRIPE"
             elif all(cls == "RIPE" for cls in berry_classes):
                 return "RIPE"
-            elif "UNDERRIPE" in berry_classes and "RIPE" in berry_classes:
+            elif "UNDERRIPE" or "UNDERRIPE-GREEN" in berry_classes and "RIPE" in berry_classes:
                 return "RIPE"
+            elif "UNDERRIPE" or "UNDERRIPE-GREEN" in berry_classes:
+                return "UNDERRIPE"
         else:
-            # Single berry case
-            return berry_classes[0]
+            if berry_classes[0] == "UNDERRIPE-GREEN":
+                return "UNDERRIPE"
+            else:
+                return berry_classes[0]
 
 if __name__ == "__main__":
     root = tk.Tk()

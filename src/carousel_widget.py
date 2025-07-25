@@ -86,6 +86,8 @@ class CarouselStatusWidget:
                 self.stats[label] += 1
                 self.total_berries_sorted += 1
         print(f"eject_array: {eject_array}")
+
+        """ draw the eject array label on top of the carousel """
         return eject_array
     
     def draw_carousel_status(self):

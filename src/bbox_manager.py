@@ -17,9 +17,6 @@ class BoundingBoxManager:
             [15, 12, 292, 483], #Box 2
         ]
         
-        # Initialize state for each bounding box
-        self.bbox_states = [[] for _ in self.bboxes]
-        
         # Callback for when bbox count changes
         self.on_bbox_count_changed = None
         
@@ -144,10 +141,8 @@ class BoundingBoxManager:
             if index is not None:
                 if index == 0 or index >= len(self.bboxes):
                     self.bboxes.append(new_bbox)
-                    self.bbox_states.append([])
                 else:
                     self.bboxes.insert(index, new_bbox)
-                    self.bbox_states.insert(index, [])
                 self.draw_bboxes()
                 # Notify callback that bbox count changed
                 self._notify_bbox_count_changed()
@@ -222,17 +217,12 @@ class BoundingBoxManager:
             idx = self.selected_bbox_idx
             if 0 <= idx < len(self.bboxes):
                 del self.bboxes[idx]
-                del self.bbox_states[idx]
                 self.selected_bbox_idx = None
                 self.draw_bboxes()
                 # Notify callback that bbox count changed
                 self._notify_bbox_count_changed()
                 return True
         return False
-    
-    def clear_states(self):
-        """Clear all bounding box states."""
-        self.bbox_states = [[] for _ in self.bboxes]
     
     def get_bbox_count(self):
         """Get the number of bounding boxes."""
@@ -241,14 +231,6 @@ class BoundingBoxManager:
     def get_bboxes(self):
         """Get a copy of the current bounding boxes."""
         return self.bboxes.copy()
-    
-    def get_bbox_states(self):
-        """Get a copy of the current bounding box states."""
-        return [state.copy() for state in self.bbox_states]
-    
-    def set_bbox_states(self, states):
-        """Set the bounding box states."""
-        self.bbox_states = states
     
     def toggle_draw_mode(self):
         """Toggle draw mode on/off."""

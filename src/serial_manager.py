@@ -93,6 +93,7 @@ class SerialManager:
                     if self.serial_port.in_waiting > 0:
                         try:
                             line = self.serial_port.readline().decode('utf-8').strip()
+                            print(f"Received line: {line}")
                         except Exception as e:
                             print(f"Serial read exception: {e}")
                             line = ""
@@ -113,7 +114,7 @@ class SerialManager:
                 self.on_trigger_complete()
             self.ph_triggers_received.clear()
     
-    def send_eject_command(self, eject_array, conveyor_speed=5, num_shakes=3, advance_steps=2):
+    def send_eject_command(self, eject_array, conveyer_1=5, conveyor_2=5, conveyor_3=5, conveyor_4=5, conveyor_5=5):
         """
         Send eject command to Arduino.
         
@@ -125,7 +126,8 @@ class SerialManager:
         if self.serial_port and self.serial_port.is_open:
             try:
                 # Convert eject_array (e.g., [0, 0, 1]) to string "001"
-                data = ''.join(str(x) for x in eject_array) + '1' + str(num_shakes) + str(conveyor_speed) +'\n'
+                data = ''.join(str(x) for x in eject_array) + '1' + str(conveyer_1) + str(conveyor_2) + \
+                               str(conveyor_3) + str(conveyor_4) + str(conveyor_5) + '\n'
                 self.serial_port.write(data.encode('utf-8'))
                 print(f"Sent eject command: {data.strip()}")
                 return True, data.strip()
