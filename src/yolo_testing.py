@@ -17,8 +17,8 @@ class WebcamApp:
         self.root.title("YOLO Webcam Segmentation")
         
         # Load YOLO model
-        # self.model = YOLO("/Users/jasper/Desktop/blueberry sorter/BlueberryJam/runs/detect/train4/weights/best.pt")
-        self.model = YOLO("/Users/jasper/Desktop/blueberry sorter/BlueberryJam/runs/segment/train5/weights/best.pt")
+        self.model = YOLO("/Users/jasper/Desktop/blueberry sorter/BlueberryJam/runs/detect/train4/weights/best.pt")
+        #self.model = YOLO("/Users/jasper/Desktop/blueberry sorter/BlueberryJam/runs/segment/train5/weights/best.pt")
         
         # Initialize webcam
         cv2.OPENCV_VIDEOIO_DEBUG=1
@@ -209,32 +209,48 @@ class WebcamApp:
         # SHAKES:
         motor_frame.pack(fill=tk.X, pady=2)
         tk.Label(motor_frame, text="shake count:").pack(side=tk.LEFT, padx=2)
-        self.conveyor_param_1 = tk.IntVar(value=5)
+        self.conveyor_param_1 = tk.IntVar(value=1)
         self.spinbox_c1 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_1, width=1)
         self.spinbox_c1.pack(side=tk.LEFT, padx=2)
 
         tk.Label(motor_frame, text="PPS:").pack(side=tk.LEFT, padx=2)
-        self.conveyor_param_2 = tk.IntVar(value=5)
+        self.conveyor_param_2 = tk.IntVar(value=6)
         self.spinbox_c2 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_2, width=1)
         self.spinbox_c2.pack(side=tk.LEFT, padx=2)
 
         tk.Label(motor_frame, text="N:").pack(side=tk.LEFT, padx=2)
-        self.conveyor_param_3 = tk.IntVar(value=5)
+        self.conveyor_param_3 = tk.IntVar(value=3)
         self.spinbox_c3 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_3, width=1)
         self.spinbox_c3.pack(side=tk.LEFT, padx=2)
 
         #DROP off controlls:
-        tk.Label(motor_frame, text="drop PPS:").pack(side=tk.LEFT, padx=2)
-        self.conveyor_param_4 = tk.IntVar(value=5)
-        self.spinbox_c4 = ttk.Spinbox( motor_frame, from_=1, to=10, textvariable=self.conveyor_param_4, width=1)
+        tk.Label(motor_frame, text="Drop:").pack(side=tk.LEFT, padx=2)
+        self.conveyor_param_4 = tk.IntVar(value=3)
+        self.spinbox_c4 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_4, width=1)
         self.spinbox_c4.pack(side=tk.LEFT, padx=2)
 
-        tk.Label(motor_frame, text="N:").pack(side=tk.LEFT, padx=2)
-        self.conveyor_param_5 = tk.IntVar(value=5)
-        self.spinbox_c5 = ttk.Spinbox( motor_frame, from_=1, to=10, textvariable=self.conveyor_param_5, width=1)
+        tk.Label(motor_frame, text="VIB:").pack(side=tk.LEFT, padx=2)
+        self.conveyor_param_5 = tk.IntVar(value=2)
+        self.spinbox_c5 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_5, width=1)
         self.spinbox_c5.pack(side=tk.LEFT, padx=2)
 
         ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
+        
+        # Motor Control
+        shake_frame = tk.Frame(controls_frame)
+        shake_frame.pack(fill=tk.X, pady=2)
+
+        self.current_sort_count = 0;
+        self.shake = False
+
+        # number of sorts between shakes control
+        tk.Label(shake_frame, text="Number of sorts between Bucket vibration:").pack(side=tk.LEFT, padx=2)
+        self.shake_interval = tk.IntVar(value=40)
+        self.spinbox_shake_interval = ttk.Spinbox(shake_frame, from_=1, to=100, textvariable=self.shake_interval, width=3)
+        self.spinbox_shake_interval.pack(side=tk.LEFT, padx=2)
+
+        ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
+        
 
          # run sort
         btn_frame = tk.Frame(controls_frame)
@@ -284,7 +300,10 @@ class WebcamApp:
         def schedule_classify():
             if self.classify_timer_running:
                 self.classify_and_update_queue()
-                interval_ms = int(self.classify_interval.get() * 1000)
+                if self.shake:
+                    interval_ms = int( (self.conveyor_param_5.get() + 1 ) * 1000)  # Add 1 second for shake
+                else:
+                    interval_ms = int(self.classify_interval.get() * 1000)
                 self.root.after(interval_ms, schedule_classify)
 
         # Create a Canvas-based button that will definitely show colors
@@ -324,7 +343,7 @@ class WebcamApp:
 
         # add clear statistics button
         self.btn_clear_stats = ttk.Button(feedback_frame, text="Reset Statistics", command=self.carousel_widget.reset_statistics)
-        self.btn_clear_stats.grid(row=7, column=0, sticky="w", pady=(5,0)) 
+        self.btn_clear_stats.grid(row=7, column=0, sticky="w", pady=(5,0))
         
         # State variables
         self.show_segmented = False
@@ -523,11 +542,36 @@ class WebcamApp:
         if hasattr(self, 'cap') and self.cap.isOpened():
             self.cap.release()
 
+    def reconnect_camera(self):
+        """Attempt to reconnect the camera if it was lost."""
+        if hasattr(self, 'cap') and self.cap is not None:
+            self.cap.release()
+        time.sleep(0.5)
+        self.cap = cv2.VideoCapture(self.camera_index, self.cap_backend)
+        if not self.cap.isOpened():
+            print("Failed to reconnect camera.")
+            return False
+        print("Camera reconnected successfully.")
+        return True
+
     def classify_and_update_queue(self):
         # 1. Take picture and classify slots 0, 1, 2
         ret, frame = self.cap.read()
         if not ret:
+            ## try to reconnect the camera
             print("Camera read failed")
+            # Attempt to reconnect the camera
+            if hasattr(self, 'cap') and self.cap is not None:
+                self.cap.release()
+            time.sleep(0.5)
+            self.cap = cv2.VideoCapture(self.camera_index, self.cap_backend)
+            if not self.cap.isOpened():
+                print("Failed to reconnect camera.")
+                return
+            ret, frame = self.cap.read()
+            if not ret:
+                print("Camera still not accessible after reconnect attempt.")
+                return
             return
 
         frame = cv2.resize(frame, self.target_res)
@@ -544,9 +588,16 @@ class WebcamApp:
         eject_array = self.carousel_widget.get_eject_array()
 
         self.label_eject_array.config(text=f"Eject array: {eject_array}")
+
+        #increment sort count up to shake interval and wrap around
+        self.current_sort_count += 1
+        self.shake = False
+        if self.current_sort_count == self.shake_interval.get():
+            self.current_sort_count = 0
+            self.shake = True
         
         # 3. Send serial commands
-        self.send_eject_command_with_ui_values(eject_array)
+        self.send_eject_command_with_ui_values(eject_array, self.shake)
         
         # Update PH indicator display
         self.ph_indicator.update_ph_emoji_labels()
@@ -573,12 +624,17 @@ class WebcamApp:
                     print(f"update slot {i} classification: {classification}")
                     blueberry.add_classification_attempt(classification)
 
-    def send_eject_command_with_ui_values(self, eject_array):
+    def send_eject_command_with_ui_values(self, eject_array, shake):
         conveyor_param_1 = self.conveyor_param_1.get()
         conveyor_param_2 = self.conveyor_param_2.get()
         conveyor_param_3 = self.conveyor_param_3.get()
         conveyor_param_4 = self.conveyor_param_4.get()
-        conveyor_param_5 = self.conveyor_param_5.get()
+        if shake:
+            conveyor_param_1 = 9
+            conveyor_param_5 = self.conveyor_param_5.get()
+        else:
+            conveyor_param_1 = self.conveyor_param_1.get()
+            conveyor_param_5 = 0
         success, message = self.serial_manager.send_eject_command(eject_array, conveyor_param_1, conveyor_param_2, conveyor_param_3, conveyor_param_4, conveyor_param_5)
         self.label_serial_status.config(text=f"Last Serial Command: {message if success else 'Error'}")
     
