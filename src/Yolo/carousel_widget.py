@@ -5,12 +5,17 @@ import time
 
 class Blueberry:
     """Represents a blueberry with classification history."""
-    def __init__(self, initial_classification):
+    def __init__(self, initial_classification, cropped_image=None):
         self.history = [initial_classification]  # Stores classification attempts
+        self.images = []  # Store cropped images if needed
+        if cropped_image is not None:
+            self.images.append(cropped_image)
 
-    def add_classification_attempt(self, classification):
+    def add_classification_attempt(self, classification, image=None):
         """Add a classification attempt to the history."""
         self.history.append(classification)
+        if image is not None:
+            self.images.append(image)
 
     def determine_final_class(self):
         """Determine the final classification based on history."""
@@ -27,10 +32,11 @@ class CarouselStatusWidget:
         "RIPE": {"fill": "#b3e0ff", "outline": "#3399ff"},
         "UNDERRIPE": {"fill": "#baffc9", "outline": "#33cc66"},
         "OVERRIPE": {"fill": "#ffb3b3", "outline": "#ff6666"},
-        None: {"fill": "#eeeeee", "outline": "#cccccc"}
+        None: {"fill": "#eeeeee", "outline": "#cccccc"},
+        "SELECTED": {"fill": "#fffbe6", "outline": "#ffcc00"}  # Highlight color
     }
 
-    def __init__(self, parent_frame, width=450, height=450):
+    def __init__(self, parent_frame, width=400, height=320):
         self.parent_frame = parent_frame
         self.width = width
         self.height = height
@@ -48,29 +54,34 @@ class CarouselStatusWidget:
         self.carousel_slots = deque([None] * self.QUEUE_LENGTH, maxlen=self.QUEUE_LENGTH)  # Use QUEUE_LENGTH
         self.eject_ports = {"RIPE": 3, "UNDERRIPE": 5, "OVERRIPE": 7}
         self.class_labels = ["RIPE", "UNDERRIPE", "OVERRIPE"]
+
+        self.selected_slot = None  # Track the currently selected slot
+
+        # Create label
+        self.label = tk.Label(parent_frame, text="Carousel Slots:")
+        self.label.pack(side=tk.TOP, pady=(2, 2))
         
         # Create canvas
         self.canvas = tk.Canvas(parent_frame, width=width, height=height, highlightthickness=0)
-        self.canvas.pack(side=tk.BOTTOM, pady=(16, 0))
-        
-        # Create label
-        self.label = tk.Label(parent_frame, text="Carousel Slots:")
-        self.label.pack(side=tk.BOTTOM, pady=(0, 2))
+        self.canvas.pack(side=tk.TOP, pady=(2, 0))
         
         # Tooltip variables
         self.tooltip = None
         self.tooltip_slot = None
         
-        # Bind mouse events for tooltip
+        # Bind mouse events for tooltip and slot selection
         self.canvas.bind("<Motion>", self.on_mouse_motion)
         self.canvas.bind("<Leave>", self.hide_tooltip)
+        self.canvas.bind("<Button-1>", self.on_slot_click)
         
         # Initial draw
         self.draw_carousel_status()
     
-    def add_to_carousel(self, initial_classification):
+    def add_to_carousel(self, initial_classification, cropped_image=None):
         """Add a new Blueberry object to the carousel queue."""
         blueberry = Blueberry(initial_classification)
+        if cropped_image is not None:
+            blueberry.images.append(cropped_image)
         self.carousel_slots.appendleft(blueberry)
         self.draw_carousel_status()
     
@@ -96,7 +107,14 @@ class CarouselStatusWidget:
         n = len(self.carousel_slots)
         cx, cy = self.width // 2, self.height // 2  # Center of the canvas
         r = min(self.width, self.height) // 3       # Radius of the circle
-        circle_r = 10                               # Radius of each slot circle
+        circle_r = 10
+        r2 = r + circle_r*2*1.1  # Radius for outer perimeter circle
+
+        self.canvas.create_oval(
+            cx - r2, cy - r2,
+            cx + r2, cy + r2,
+            fill="#fff", outline="#222", width=1
+        )                            # Radius of each slot circle
 
         # Update tooltip if it's currently showing
         if self.tooltip and self.tooltip_slot is not None:
@@ -108,8 +126,13 @@ class CarouselStatusWidget:
             angle = -2 * np.pi * (i-1) / n - np.pi/2  # Start at top, clockwise direction
             x = cx + r * np.cos(angle)
             y = cy + r * np.sin(angle)
-            fill = self.COLORS.get(label, self.COLORS[None])["fill"]
-            outline = self.COLORS.get(label, self.COLORS[None])["outline"]
+            # Highlight selected slot
+            if self.selected_slot == i:
+                fill = self.COLORS["SELECTED"]["fill"]
+                outline = self.COLORS["SELECTED"]["outline"]
+            else:
+                fill = self.COLORS.get(label, self.COLORS[None])["fill"]
+                outline = self.COLORS.get(label, self.COLORS[None])["outline"]
             
             # Create slot circle with tags for hover detection
             slot_id = f"slot_{i}"
@@ -127,27 +150,73 @@ class CarouselStatusWidget:
                 )
         
         # Draw eject port triangles
-        triangle_size = 18
+        triangle_size = circle_r * 2  # Size of the triangle
+        
         for label, pos in self.eject_ports.items():
             idx = pos - 1  # 0-based
             angle = -2 * np.pi * idx / n - np.pi/2
             # Triangle tip is triangle_size away from the slot circle edge
-            tip_dist = r + circle_r + triangle_size
-            base_dist = r + circle_r + triangle_size * 0.4  # base closer to slot
-            angle_offset = np.pi / 72 # base width
+            base_dist = r + circle_r + 5
+            tip_dist = base_dist + ( triangle_size * ( np.sqrt(3) / 2 ) ) # Tip is further out
+            angle_offset = np.arctan(triangle_size / (2 * base_dist))
             x_tip = cx + tip_dist * np.cos(angle)
             y_tip = cy + tip_dist * np.sin(angle)
             x_base1 = cx + base_dist * np.cos(angle - angle_offset)
             y_base1 = cy + base_dist * np.sin(angle - angle_offset)
             x_base2 = cx + base_dist * np.cos(angle + angle_offset)
             y_base2 = cy + base_dist * np.sin(angle + angle_offset)
+            # If selected_slot is the label, outline is yellow
+            outline_color = "#ffcc00" if self.selected_slot == label else "#222"
             self.canvas.create_polygon(
                 [(x_tip, y_tip), (x_base1, y_base1), (x_base2, y_base2)],
-                fill=self.COLORS[label]["outline"], outline="#222", width=2
+                fill=self.COLORS[label]["outline"], outline=outline_color, width=2, tags=(f"eject_{label}",)
             )
+            # Add label tag as text near the triangle tip, right edge aligned to tip
+            label_x = x_tip - 5  # Align right edge of text to triangle tip
+            label_y = y_tip
+            font_style = ("Arial", 9, "bold underline") if self.selected_slot == label else ("Arial", 9, "bold")
+            self.canvas.create_text(
+                label_x, label_y, text=label, fill=self.COLORS[label]["outline"],
+                font=font_style, anchor="e", tags=(f"eject_{label}",)
+            )
+
+        # draw pie chart in the center of the carousel
+        pie_radius = (r - circle_r) * 0.9
+        pie_center_x = cx
+        pie_center_y = cy
+        self.canvas.create_oval(
+            pie_center_x - pie_radius, pie_center_y - pie_radius,
+            pie_center_x + pie_radius, pie_center_y + pie_radius,
+            fill="#fff", outline="#222", width=2
+        )
+        # Calculate angles for pie chart segments
+        total_count = sum(self.stats.values())  
+        if total_count > 0:
+            start_angle = 0
+            for label in self.class_labels:
+                count = self.stats[label]
+                if count > 0:
+                    angle = 2 * np.pi * count / total_count
+                    end_angle = start_angle + angle
+                    # Draw pie segment
+                    self.canvas.create_arc(
+                        pie_center_x - pie_radius, pie_center_y - pie_radius,
+                        pie_center_x + pie_radius, pie_center_y + pie_radius,
+                        start=np.degrees(start_angle), extent=np.degrees(angle),
+                        fill=self.COLORS[label]["fill"], outline=self.COLORS[label]["outline"], width=2
+                    )
+                    start_angle = end_angle
+        else:
+            # Draw empty pie chart
+            self.canvas.create_text(
+                pie_center_x, pie_center_y, text="No berries sorted yet",
+                fill="#666", font=("Arial", 10)
+            )
+
     def clear_carousel(self):
         """Clear all items from the carousel."""
         self.carousel_slots = deque([None] * self.QUEUE_LENGTH, maxlen=self.QUEUE_LENGTH)
+        self.selected_slot = None
         self.draw_carousel_status()
     
     def reset_statistics(self):
@@ -193,6 +262,28 @@ class CarouselStatusWidget:
                 self.tooltip_slot = slot_num
         else:
             self.hide_tooltip()
+
+    def on_slot_click(self, event):
+        """Handle mouse click to select a slot and highlight it."""
+        overlapping = self.canvas.find_overlapping(event.x, event.y, event.x, event.y)
+        slot_num = None
+        for item in overlapping:
+            tags = self.canvas.gettags(item)
+            for tag in tags:
+                if tag.startswith("slot_"):
+                    slot_num = int(tag.split("_")[1])
+                    break
+                elif tag.startswith("eject_"):
+                    slot_num = tag.split("_")[1]
+                    break
+            if slot_num is not None:
+                break
+        if slot_num is not None:
+            self.selected_slot = slot_num
+            self.draw_carousel_status()
+        else:
+            self.selected_slot = None
+            self.draw_carousel_status()
     
     def show_tooltip(self, x, y, slot_num):
         """Show tooltip with blueberry history for the given slot."""
@@ -266,6 +357,64 @@ class CarouselStatusWidget:
             self.tooltip = None
             self.tooltip_slot = None
 
+    def get_selected_images(self):
+        """Get the currently selected blueberry object."""
+        # check if it is a number and within range
+        if self.selected_slot is not None and 0 <= self.selected_slot < len(self.carousel_slots):
+            return self.carousel_slots[self.selected_slot]
+        # check if selected slot is a classification label, and not a slot number, and return all images that match
+        elif isinstance(self.selected_slot, str) and self.selected_slot in self.carousel_slots:
+            # Return all blueberries that match the selected classification label
+            return [blueberry for blueberry in self.carousel_slots if blueberry and blueberry.determine_final_class() == self.selected_slot]
+        return None
+
+class CroppedImageWidget:
+    """Widget for displaying cropped images berry image history."""
+    # Images are displayed in a row, with the most recent on the left.
+    # the selected slot is chosen by clicking 
+    
+    def __init__(self, parent_frame, carousel_widget, width=600, height=100):
+        self.parent_frame = parent_frame
+        self.carousel_widget = carousel_widget
+        self.width = width
+        self.height = height
+        
+        # Create main frame
+        self.frame = tk.Frame(parent_frame)
+        
+        # Create canvas for displaying cropped images
+        self.canvas = tk.Canvas(self.frame, width=width, height=height, highlightthickness=0)
+        self.canvas.pack()
+        
+        # Pack the main frame
+        self.frame.pack(pady=(10, 0))
+
+        self.update_display()  # Initial display update
+    
+    def pack(self, **kwargs):
+        """Pack the main frame."""
+        self.frame.pack(**kwargs)
+    
+    def grid(self, **kwargs):
+        """Grid the main frame."""
+        self.frame.grid(**kwargs)
+    
+    def display_image(self, image):
+        """Display a cropped image on the canvas."""
+        if image is not None:
+            self.canvas.create_image(0, 0, anchor=tk.NW, image=image)
+
+    def update_display(self):
+        """Update the display with cropped images from the selected slot."""
+        self.canvas.delete("all")
+
+        # Get the selected blueberry
+        images = self.carousel_widget.get_selected_images()
+        if blueberry:
+            # Display the cropped image
+            cropped_image = blueberry.get_cropped_image(self.width, self.height)
+            self.display_image(cropped_image)
+
 
 class StatisticsWidget:
     """Widget for displaying sorting statistics with a horizontal stacked bar chart."""
@@ -284,13 +433,13 @@ class StatisticsWidget:
         self.text_frame.pack(anchor="w", side=tk.LEFT, padx=(0, 20))
         
         # Statistics labels
-        self.time_label = tk.Label(self.text_frame, text="Total Time: 0:00:00", font=("Arial", 12), anchor="w", justify="left")
+        self.time_label = tk.Label(self.text_frame, text="Total Time: 0:00:00", anchor="w", justify="left")
         self.time_label.pack(anchor="w")
         
-        self.rate_label = tk.Label(self.text_frame, text="Rate: 0.0 berries/min", font=("Arial", 12), anchor="w", justify="left")
+        self.rate_label = tk.Label(self.text_frame, text="Rate: 0.0 berries/min", anchor="w", justify="left")
         self.rate_label.pack(anchor="w")
         
-        self.total_label = tk.Label(self.text_frame, text="Total: 0 berries", font=("Arial", 12), anchor="w", justify="left")
+        self.total_label = tk.Label(self.text_frame, text="Total: 0 berries", anchor="w", justify="left")
         self.total_label.pack(anchor="w")
         
         # Create canvas for the bar chart - fixed width for now
@@ -300,6 +449,12 @@ class StatisticsWidget:
 
         self.canvas = tk.Canvas(self.frame, height=height, highlightthickness=0)
         self.canvas.pack(side=tk.LEFT, fill='both', expand=True, padx=(0, 40))
+
+        # add clear button to the right side of the frame
+        self.clear_button = tk.Button(self.frame, text="Reset Statistics", command=self.carousel_widget.reset_statistics)
+        self.clear_button.pack(side=tk.RIGHT, padx=(0, 20), pady=(0, 10))
+
+        # self.frame.pack(fill=tk.BOTH, expand=True)
         
         # Initial draw
         self.update_display()

@@ -31,6 +31,8 @@ class SerialManager:
         """Get list of available serial ports."""
         ports = serial.tools.list_ports.comports()
         self.available_ports = [port.device for port in ports]
+        self.available_descriptions = [port.description for port in ports]
+        self.available_hwid = [port.hwid for port in ports]
         for port in sorted(ports, key=lambda p: p.device):
             print("{}: {} [{}]".format(port.device, port.description, port.hwid))
         if self.available_ports:
@@ -197,14 +199,49 @@ class SerialControlWidget:
         if serial_manager.available_ports:
             self.serial_port_dropdown.set(serial_manager.available_ports[0])
         self.serial_port_dropdown.pack(side=tk.LEFT, padx=2)
+
+        # Tooltip for port descriptions
+
+        self.tooltip = None
+
+        def show_tooltip(event):
+            idx = self.serial_port_dropdown.current()
+            if idx < 0 or idx >= len(serial_manager.available_descriptions):
+                return
+            desc = serial_manager.available_descriptions[idx]
+            if self.tooltip:
+                self.tooltip.destroy()
+            x = event.widget.winfo_rootx() + event.widget.winfo_width()
+            y = event.widget.winfo_rooty()
+            self.tooltip = tk.Toplevel(self.serial_port_dropdown)
+            self.tooltip.wm_overrideredirect(True)
+            self.tooltip.geometry(f"+{x}+{y}")
+            label = tk.Label(self.tooltip, text=desc, background="#ffffe0", relief="solid", bd=1, font=("Arial", 10))
+            label.pack()
+
+        def hide_tooltip(_):  # Use underscore to indicate unused parameter
+            if self.tooltip:
+                self.tooltip.destroy()
+                self.tooltip = None
+
+        self.serial_port_dropdown.bind("<Enter>", show_tooltip)
+        self.serial_port_dropdown.bind("<Leave>", hide_tooltip)
+        # self.serial_port_dropdown.bind("<<ComboboxSelected>>", hide_tooltip)
+
+        self.serial_port_dropdown.bind("<Button-1>", self.refresh_ports)
         
         # Control buttons
-        self.btn_refresh_ports = ttk.Button(self.serial_frame, text="Refresh", command=self.refresh_ports, width=8)
-        self.btn_refresh_ports.pack(side=tk.LEFT, padx=2)
+        # self.btn_refresh_ports = ttk.Button(self.serial_frame, text="Refresh", command=self.refresh_ports, width=8)
+        # self.btn_refresh_ports.pack(side=tk.LEFT, padx=2)
         
         self.btn_connect_serial = ttk.Button(self.serial_frame, text="Connect", command=self.toggle_connection, width=8)
         self.btn_connect_serial.pack(side=tk.LEFT, padx=2)
-        
+
+        # status display
+        self.serial_status_var = tk.StringVar(value="Disconnected")
+        self.status_label = tk.Label(self.serial_frame, textvariable=self.serial_status_var, anchor="w", justify="right", fg="red")
+        self.status_label.pack(side=tk.RIGHT, padx=0)
+
         # Set up status callback
         serial_manager.set_status_callback(self.on_status_change)
     
@@ -218,7 +255,7 @@ class SerialControlWidget:
             if self.serial_manager.is_connected():
                 self.btn_connect_serial.config(text="Disconnect")   
     
-    def refresh_ports(self):
+    def refresh_ports(self, event=None):
         """Refresh the list of available ports."""
         port_list = self.serial_manager.refresh_available_ports()
         self.serial_port_dropdown['values'] = port_list
@@ -240,6 +277,9 @@ class SerialControlWidget:
         """Handle status changes from serial manager."""
         # This can be overridden by the parent to update UI elements
         print(f"Serial status: {status_text}")
+        self.serial_status_var.set(status_text)
+        self.status_label.config(fg="green" if is_connected else "red")
+
 
 
 class PHIndicatorWidget:

@@ -5,6 +5,10 @@ import cv2
 from ultralytics import YOLO
 import time
 from collections import deque
+from cv2_enumerate_cameras import enumerate_cameras
+from cv2_enumerate_cameras import supported_backends
+from cv2.videoio_registry import getBackendName
+import os
 
 # Import our custom modules
 from bbox_manager import BoundingBoxManager
@@ -16,40 +20,10 @@ class WebcamApp:
         self.root = root
         self.root.title("YOLO Webcam Segmentation")
         
-        # Load YOLO model
-        self.model = YOLO("/Users/jasper/Desktop/blueberry sorter/BlueberryJam/runs/detect/train4/weights/best.pt")
-        #self.model = YOLO("/Users/jasper/Desktop/blueberry sorter/BlueberryJam/runs/segment/train5/weights/best.pt")
-        
-        # Initialize webcam
-        cv2.OPENCV_VIDEOIO_DEBUG=1
-        self.camera_index = 0
-        self.cap_backend = cv2.CAP_AVFOUNDATION  # Use AVFoundation backend for Mac
-        self.cap = cv2.VideoCapture(self.camera_index, self.cap_backend)
-        
-        if not self.cap.isOpened():
-            raise Exception("Webcam not accessible")
-        
-        # get camera type
-        camera_type = self.cap.get(cv2.CAP_PROP_BACKEND)
-        print(f"Using unknown backend: {camera_type}")
-
-        # Set manual exposure mode (disable auto exposure)
-        # self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # 0.25 = manual, 0.75 = auto
-        self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3) # auto mode
-        self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1) # manual mode
-
-        time.sleep(1)
-
-        print (self.cap.get(cv2.CAP_PROP_EXPOSURE))
-
-        # Define target resolution
-        self.camera_x = 1920
-        self.camera_y = 1080
-        self.scale_feed = 0.45
-        self.target_res = (round(self.camera_x*self.scale_feed), round(self.camera_y*self.scale_feed))
-        self.exposure_unsupported = False  # Now we try to support exposure
-        self.exposure = 0.5  # Default exposure value (0-1 range)
-        self.capture_device = None
+        # Load YOLO model using a robust relative path
+        model_path = os.path.join(os.path.dirname(__file__), "models", "yolo11n-seg.pt")
+        self.model = YOLO(model_path)
+        # self.model = YOLO("best.pt")
 
         # Initialize classification tracking
         self.class_labels = ["RIPE", "UNDERRIPE", "OVERRIPE"]
@@ -82,33 +56,212 @@ class WebcamApp:
         main_frame.grid_columnconfigure(1, weight=1)
         main_frame.grid_rowconfigure(0, weight=1)
 
-        # Canvas (video feed) at the top of feedback column
-        canvas_label = tk.Label(feedback_frame, text="Camera Feed")
-        canvas_label.grid(row=1, column=0, sticky="w")
-        self.canvas = tk.Canvas(feedback_frame, width=self.target_res[0], height=self.target_res[1])
-        self.canvas.grid(row=2, column=0, pady=(0, 10))
-
-        # Initialize modules
-        self.bbox_manager = BoundingBoxManager(self.canvas, self.target_res)
-        self.bbox_states = [[] for _ in range(self.bbox_manager.get_bbox_count())]  # Initialize with empty state per bbox
-        self.serial_manager = SerialManager(root)
-        
-        # Set up callbacks
-        # remove for now for maula control
-        # self.serial_manager.set_trigger_callback(self.classify_and_update_queue)
-        self.bbox_manager.set_bbox_count_changed_callback(self.on_bbox_count_changed)
-
         # --- Controls (stacked vertically, let widgets wrap/expand as needed) ---
 
+        # Initialize webcam
+        cv2.OPENCV_VIDEOIO_DEBUG=1
+        self.camera_index = tk.IntVar(value=0)
+        self.cap_backend = tk.IntVar(value=cv2.CAP_DSHOW)  # DirectShow backend for Windows
+        self.cap = cv2.VideoCapture(self.camera_index.get(), self.cap_backend.get())
+
+        # set frame size 1280x720
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)    
+
+        # check camera aspect ratio
+        self.camera_x = tk.IntVar(value=int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
+        self.camera_y = tk.IntVar(value=int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+        self.camera_aspect_ratio = self.camera_x.get() / self.camera_y.get()
+        print(f"Camera resolution: {self.camera_x.get()}x{self.camera_y.get()}")
+        print(f"Camera aspect ratio: {self.camera_aspect_ratio}")
+
+        if not self.cap.isOpened():
+            raise Exception("Webcam not accessible")
+
+        # Define target resolution
+        # self.camera_x.get() = 1920
+        # self.camera_y.get() = 1080
+        self.scale_feed = tk.DoubleVar(value=0.65)
+        self.target_res = (round(self.camera_x.get() * self.scale_feed.get()), round(self.camera_y.get() * self.scale_feed.get()))
+        self.scale_feed_model = tk.DoubleVar(value=0.5)
+        self.target_res_model = (round(self.camera_x.get()*self.scale_feed_model.get()), round(self.camera_y.get()*self.scale_feed_model.get()))
+        self.exposure_unsupported = False  # Now we try to support exposure
+        # Create exposure as a tk variable with the current camera exposure value
+        self.exposure = tk.DoubleVar(value=self.cap.get(cv2.CAP_PROP_EXPOSURE))
+        
+        print('exposure:', self.exposure.get())
+
+        # Set manual exposure mode (disable auto exposure)
+        # https://github.com/opencv/opencv/issues/9738
+
+        self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # 0.25 = manual, 0.75 = auto
+        # self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3) # auto mode
+        # self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1) # manual mode
+
+        # =====================================================================
+        # ========================= CAMERA CONTROLS ===========================
+        # =====================================================================
+        
+
+        camera_controls_frame = tk.Frame(controls_frame)
+        camera_controls_frame.pack(fill=tk.X, pady=2)
+
+
+        tk.Label(camera_controls_frame, text="Camera:").pack(side=tk.LEFT)
+
+        # ========================= CAMERA SELECTION ==========================
+
+        self.available_cameras = [1]  # Placeholder for available cameras
+
+        self.camera_dropdown = ttk.Combobox(camera_controls_frame, textvariable=self.camera_index,width=1, state='readonly')
+        self.camera_dropdown['values'] = self.available_cameras
+        self.camera_dropdown.pack(side=tk.LEFT, padx=2)
+
+        def populate_camera_dropdown(event=None):
+            # Use cv2_enumerate_cameras to get available cameras
+            self.available_cameras = []
+            for camera_info in enumerate_cameras(self.cap_backend.get()):
+                if camera_info.index not in self.available_cameras:
+                    print(f"Found camera: {camera_info.name} at index {camera_info.index}")
+                self.available_cameras.append(camera_info.index)
+            self.camera_dropdown['values'] = self.available_cameras
+
+        populate_camera_dropdown()
+
+        # Update camera list every time the dropdown is clicked/opened
+        self.camera_dropdown.bind("<Button-1>", populate_camera_dropdown)
+
+        
+        # ========================= BACKEND SELECTION =========================
+
+        # tk.Label(camera_controls_frame, text="Backend:").pack(side=tk.LEFT)
+
+        # combobox for camera backends
+        self.available_backends = [cv2.CAP_DSHOW]
+        self.backend_dropdown = ttk.Combobox(camera_controls_frame, textvariable=self.cap_backend, width=4, state='readonly')
+        self.backend_dropdown['values'] =  self.available_backends #[getBackendName(backend) for backend in self.available_backends]
+        self.backend_dropdown.pack(side=tk.LEFT, padx=2)
+
+        # Function to update camera backend
+        def update_camera_backend(event=None):
+            self.available_backends = []
+            for backend in supported_backends:
+                self.available_backends.append(backend)
+            self.backend_dropdown['values'] = self.available_backends # 
+
+        update_camera_backend()
+
+        # Update backend list every time the dropdown is clicked/opened
+        self.backend_dropdown.bind("<Button-1>", update_camera_backend)
+
+        # ========================= RECONNECT BUTTON ==========================
+
+        # add a button with ascii play icon / emoji to trigger camera reconnection
+        self.btn_reconnect_camera = ttk.Button(camera_controls_frame, text="▶", command=lambda: self.reconnect_camera(), width=2)
+        self.btn_reconnect_camera.pack(side=tk.LEFT, padx=2)
+
+        # ========================= EXPOSURE CONTROL ==========================
+        
+        # spinbox for exposure
+        tk.Label(camera_controls_frame, text="Exposure:").pack(side=tk.LEFT)
+        self.exposure_spinbox = tk.Spinbox(camera_controls_frame, from_=-10, to=100, increment=.05, textvariable=self.exposure,width=4, state='normal')
+        self.exposure_spinbox.pack(side=tk.LEFT, padx=2)
+
+        # function to update exposure
+        def update_exposure(event=None):
+            try:
+                # Get the exposure value from the spinbox
+                exp_value = float(self.exposure_spinbox.get())
+                self.cap.set(cv2.CAP_PROP_EXPOSURE, exp_value)
+                print(f"Exposure set to: {exp_value}")
+            except ValueError:
+                print("Invalid exposure value")
+
+        # update exposure when spinbox value changes
+        self.exposure_spinbox.bind("<Return>", update_exposure)
+        self.exposure_spinbox.bind("<FocusOut>", update_exposure)
+        self.exposure_spinbox.bind("<Button-1>", update_exposure)
+
+        # # ========================== GAMMA CONTROL =========================
+
+        # self.gamma = tk.DoubleVar(value=self.cap.get(cv2.CAP_PROP_GAMMA))
+        # print('gamma:', self.gamma.get())
+
+        # tk.Label(camera_controls_frame, text="Gamma:").pack(side=tk.LEFT)
+        # self.gamma_spinbox = tk.Spinbox(camera_controls_frame, from_=0, to=100, increment=.01, textvariable=self.gamma, width=3, state='normal')
+        # self.gamma_spinbox.pack(side=tk.LEFT, padx=2)
+
+        # # function to update gamma
+        # def update_gamma(event=None):
+        #     try:
+        #         # Get the gamma value from the spinbox
+        #         gamma_value = float(self.gamma_spinbox.get())
+        #         self.cap.set(cv2.CAP_PROP_GAMMA, gamma_value)
+        #         print(f"Gamma set to: {gamma_value}")
+        #     except ValueError:
+        #         print("Invalid gamma value")
+
+        # # update gamma when spinbox value changes
+        # self.gamma_spinbox.bind("<Return>", update_gamma)
+        # self.gamma_spinbox.bind("<FocusOut>", update_gamma)
+
+        # ========================== GAIN CONTROL =========================
+
+        self.gain = tk.DoubleVar(value=self.cap.get(cv2.CAP_PROP_GAIN))
+        print('gain:', self.gain.get())
+
+        tk.Label(camera_controls_frame, text="Gain:").pack(side=tk.LEFT)
+        self.gain_spinbox = tk.Spinbox(camera_controls_frame, from_=1, to=9, increment=.5, textvariable=self.gain, width=3, state='normal')
+        self.gain_spinbox.pack(side=tk.LEFT, padx=2)
+
+        # function to update gain
+        def update_gain(event=None):
+            try:
+                # Get the gain value from the spinbox
+                gain_value = float(self.gain_spinbox.get())
+                self.cap.set(cv2.CAP_PROP_GAIN, gain_value)
+                print(f"Gain set to: {gain_value}")
+            except ValueError:
+                print("Invalid gain value")
+
+        # update gain when spinbox value changes
+        self.gain_spinbox.bind("<Return>", update_gain)
+        self.gain_spinbox.bind("<FocusOut>", update_gain)
+        self.gain_spinbox.bind("<Button-1>", update_gain)  # Bind to mouse click
+
+        # ========================== SCALE FEED =========================
+
+        tk.Label(camera_controls_frame, text="Scale:").pack(side=tk.LEFT)
+        self.scale_feed_spinbox = tk.Spinbox(camera_controls_frame, from_=0.1, to=1.0, increment=0.05, textvariable=self.scale_feed, width=4)
+        self.scale_feed_spinbox.pack(side=tk.LEFT, padx=2)
+
+        # Function to update target resolution based on scale feed
+        def update_target_resolution(event=None):
+            try:
+                scale_value = float(self.scale_feed_spinbox.get())
+                self.target_res = (round(self.camera_x.get() * scale_value), round(self.camera_y.get() * scale_value))
+                print(f"Target resolution set to: {self.target_res[0]}x{self.target_res[1]}")
+                # Update canvas size to match new target resolution
+                self.canvas.config(width=self.target_res[0], height=self.target_res[1])
+            except ValueError:
+                print("Invalid scale value")
+
+        # Update target resolution when scale feed value changes
+        self.scale_feed_spinbox.bind("<Return>", update_target_resolution)
+        self.scale_feed_spinbox.bind("<Button-1>", update_target_resolution)
+
+        # =====================================================================
+        # ========================= SERIAL PORT CONTROLS ======================
+        # =====================================================================
+
+        ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
+
         # Serial controls
+        self.serial_manager = SerialManager(root)
         self.serial_control_widget = SerialControlWidget(controls_frame, self.serial_manager)
 
-        # --- Serial Status Container ---
-        serial_status_container = tk.Frame(feedback_frame)
-        serial_status_container.grid(row=0, column=0, sticky="nw")
-
         # PH indicator widget
-        self.ph_indicator = PHIndicatorWidget(serial_status_container, self.serial_manager)
+        # self.ph_indicator = PHIndicatorWidget(serial_status_container, self.serial_manager)
 
         # Start serial thread
         self.serial_manager.start_serial_thread()
@@ -140,23 +293,25 @@ class WebcamApp:
         def draw_toggle_command():
             draw_mode = self.bbox_manager.toggle_draw_mode()
             if draw_mode:
-                self.edit_toggle.deselect()
+                self.edit_toggle.state(['!selected'])
 
         def edit_toggle_command():
             edit_mode = self.bbox_manager.toggle_edit_mode()
             if edit_mode:
-                self.draw_toggle.deselect()
+                self.draw_toggle.state(['!selected'])
 
-        # Replace tk Checkbuttons with ttk Checkbuttons
         self.draw_toggle = ttk.Checkbutton(
             bbox_frame, text="Draw",
-            command=draw_toggle_command
+            command=draw_toggle_command,
+            state=['!selected']  # Start with draw mode off
+
         )
         self.draw_toggle.pack(side=tk.LEFT, padx=2)
 
         self.edit_toggle = ttk.Checkbutton(
             bbox_frame, text="Edit",
-            command=edit_toggle_command
+            command=edit_toggle_command,
+            state='normal'  # Start with edit mode off
         )
         self.edit_toggle.pack(side=tk.LEFT, padx=2)
 
@@ -202,6 +357,10 @@ class WebcamApp:
 
         ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
 
+        # =============================================================================
+        # ========================= MOTOR CONTROLS ====================================
+        # =============================================================================
+
         # Motor Control
         motor_frame = tk.Frame(controls_frame)
         motor_frame.pack(fill=tk.X, pady=2)
@@ -210,29 +369,94 @@ class WebcamApp:
         motor_frame.pack(fill=tk.X, pady=2)
         tk.Label(motor_frame, text="shake count:").pack(side=tk.LEFT, padx=2)
         self.conveyor_param_1 = tk.IntVar(value=1)
-        self.spinbox_c1 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_1, width=1)
+        self.spinbox_c1 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_1, width=2)
         self.spinbox_c1.pack(side=tk.LEFT, padx=2)
 
         tk.Label(motor_frame, text="PPS:").pack(side=tk.LEFT, padx=2)
         self.conveyor_param_2 = tk.IntVar(value=6)
-        self.spinbox_c2 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_2, width=1)
+        self.spinbox_c2 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_2, width=2)
         self.spinbox_c2.pack(side=tk.LEFT, padx=2)
 
         tk.Label(motor_frame, text="N:").pack(side=tk.LEFT, padx=2)
         self.conveyor_param_3 = tk.IntVar(value=3)
-        self.spinbox_c3 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_3, width=1)
+        self.spinbox_c3 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_3, width=2)
         self.spinbox_c3.pack(side=tk.LEFT, padx=2)
 
         #DROP off controlls:
         tk.Label(motor_frame, text="Drop:").pack(side=tk.LEFT, padx=2)
         self.conveyor_param_4 = tk.IntVar(value=3)
-        self.spinbox_c4 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_4, width=1)
+        self.spinbox_c4 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_4, width=2)
         self.spinbox_c4.pack(side=tk.LEFT, padx=2)
 
         tk.Label(motor_frame, text="VIB:").pack(side=tk.LEFT, padx=2)
         self.conveyor_param_5 = tk.IntVar(value=2)
-        self.spinbox_c5 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_5, width=1)
+        self.spinbox_c5 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_5, width=2)
         self.spinbox_c5.pack(side=tk.LEFT, padx=2)
+
+        # add a slim canvas element, 10px x 450px, that shows a square wave representing the motor conrol pattern
+        # conveyor_param_1 = shake count - number of initial waves
+        # conveyor_param_2 = PPS (pulses per second) - represented by the frequency of the square wave
+        # conveyor_param_3 = N (motor pulses) - represented by the amplitude of the square wave
+        # conveyor_param_4 = Drop (motor pulses for drop) - represented by a single trailing pulse, also amplitude
+        # conveyor_param_5 = VIB (vibration strength) 
+        
+        motor_sequence = tk.Canvas(controls_frame, width=200, height=10, bg="white")
+        motor_sequence.pack(fill=tk.X, pady=2)
+        motor_sequence.create_rectangle(0, 0, 200, 50, fill="white", outline="black")
+        motor_sequence.create_text(100, 25, text="Motor Sequence", font=("Arial", 10, "bold"), fill="black")
+        # Draw the square wave based on the parameters
+        def draw_motor_sequence():
+            motor_sequence.delete("all")
+            width = 200
+            height = 10
+            shake_count = self.conveyor_param_1.get()
+            pps = self.conveyor_param_2.get() + 1
+            n = self.conveyor_param_3.get() + 1
+            drop = self.conveyor_param_4.get()
+            vib = self.conveyor_param_5.get()
+
+            # Calculate the width of each pulse based on PPS
+            pulse_width = width / (pps * 10)
+            if pulse_width < 1:
+                pulse_width = 1
+            # Calculate the height of the pulse based on N
+            pulse_height = height / 2 * (n / 10)
+            if pulse_height < 1:
+                pulse_height = 1
+            # Calculate the drop pulse width
+            drop_width = width / 10
+            if drop_width < 1:
+                drop_width = 1
+            # Calculate the vibration pulse width
+            vib_width = width / 10
+            if vib_width < 1:
+                vib_width = 1
+            # Draw the square wave
+            for i in range(shake_count):
+                x_start = i * (pulse_width * 2)
+                # Draw the pulse
+                motor_sequence.create_rectangle(x_start, height - pulse_height, x_start + pulse_width, height, fill="blue", outline="blue")
+                # Draw the drop pulse
+                if i == shake_count - 1:
+                    motor_sequence.create_rectangle(x_start + pulse_width, height - drop, x_start + pulse_width + drop_width, height, fill="red", outline="red")
+                    motor_sequence.create_rectangle(x_start + pulse_width + drop_width, height - vib, x_start + pulse_width + drop_width + vib_width, height, fill="green", outline="green")
+            if shake_count == 0:
+                motor_sequence.create_rectangle(pulse_width, height - drop, pulse_width + drop_width, height, fill="red", outline="red")
+                motor_sequence.create_rectangle(pulse_width + drop_width, height - vib, pulse_width + drop_width + vib_width, height, fill="green", outline="green")
+
+            # Draw the remaining space
+            if shake_count * (pulse_width * 2) < width:
+                motor_sequence.create_rectangle(shake_count * (pulse_width * 2), 0, width, height, fill="white", outline="white")
+            # Update the canvas
+            motor_sequence.update()
+        draw_motor_sequence()
+        # Bind the draw function to the spinboxes
+        self.spinbox_c1.bind("<Button-1>", lambda e: draw_motor_sequence())
+        self.spinbox_c2.bind("<Button-1>", lambda e: draw_motor_sequence())
+        self.spinbox_c3.bind("<Button-1>", lambda e: draw_motor_sequence())
+        self.spinbox_c4.bind("<Button-1>", lambda e: draw_motor_sequence())
+        self.spinbox_c5.bind("<Button-1>", lambda e: draw_motor_sequence())
+
 
         ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
         
@@ -250,23 +474,13 @@ class WebcamApp:
         self.spinbox_shake_interval.pack(side=tk.LEFT, padx=2)
 
         ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
-        
 
-         # run sort
+        #=============================================================================
+        # =================== AUTOMATIC CLASSIFICATION CONTROLS ======================
+        #=============================================================================
+
         btn_frame = tk.Frame(controls_frame)
         btn_frame.pack(fill=tk.X, pady=2)
-        tk.Label(btn_frame, text="Auto-Sort rate: (s)").pack(side=tk.LEFT, padx=2)
-        self.classify_interval = tk.DoubleVar(value=10.1)
-        self.spinbox_classify_interval = ttk.Spinbox(
-            btn_frame,
-            from_=0.1,
-            to=60.0,
-            increment=0.1,
-            textvariable=self.classify_interval,
-            format="%.1f",
-            width=5
-        )
-        self.spinbox_classify_interval.pack(side=tk.LEFT, padx=2)
 
         self.classify_timer_running = False
 
@@ -287,12 +501,12 @@ class WebcamApp:
                 # Running state - Red with "Stop"
                 self.btn_canvas.delete("all")
                 self.btn_canvas.create_rectangle(0, 0, 120, 50, fill="#ff0000", outline="#cc0000", width=2)
-                self.btn_canvas.create_text(60, 25, text="STOP", font=("Arial", 12, "bold"), fill="white")
+                self.btn_canvas.create_text(60, 25, text="STOP SORT", font=("Arial", 12, "bold"), fill="white")
             else:
                 # Stopped state - Green with "Start"
                 self.btn_canvas.delete("all")
                 self.btn_canvas.create_rectangle(0, 0, 120, 50, fill="#00ff00", outline="#00cc00", width=2)
-                self.btn_canvas.create_text(60, 25, text="START", font=("Arial", 12, "bold"), fill="black")
+                self.btn_canvas.create_text(60, 25, text="START SORT", font=("Arial", 12, "bold"), fill="black")
 
         def on_button_click(event):
             start_classify_timer()
@@ -315,11 +529,24 @@ class WebcamApp:
         
         # Initialize button appearance
         update_button_appearance(False)
-        #add a checkbox to enable image saving during automatic classification
-        self.save_images_var = tk.BooleanVar(value=False)
-        self.save_images_checkbox = ttk.Checkbutton(
-            btn_frame, text="Save Images", variable=self.save_images_var
+
+        tk.Label(btn_frame, text="rate: (s)").pack(side=tk.LEFT, padx=2)
+        self.classify_interval = tk.DoubleVar(value=10.1)
+        self.spinbox_classify_interval = ttk.Spinbox(
+            btn_frame,
+            from_=0.1,
+            to=60.0,
+            increment=0.1,
+            textvariable=self.classify_interval,
+            format="%.1f",
+            width=5
         )
+        self.spinbox_classify_interval.pack(side=tk.LEFT, padx=2)
+
+        #add a checkbox to enable image saving during automatic classification
+        tk.Label(btn_frame, text="Save Images:").pack(side=tk.LEFT, padx=2)
+        self.save_images_var = tk.BooleanVar(value=False)
+        self.save_images_checkbox = ttk.Checkbutton(btn_frame, variable=self.save_images_var)
         self.save_images_checkbox.pack(side=tk.LEFT, padx=2)
 
         ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
@@ -327,7 +554,22 @@ class WebcamApp:
         # --- Add Carousel Status Widget at the bottom of controls column ---
         self.carousel_widget = CarouselStatusWidget(controls_frame)
 
-        # --- Feedback/State output (row by row) ---
+        # ==========================================================================================================
+        # ======================================== FEEDBACK / STATE OUTPUT ========================================
+        # ==========================================================================================================
+
+                # Canvas (video feed) at the top of feedback column
+        self.canvas = tk.Canvas(feedback_frame, width=self.target_res[0], height=self.target_res[1])
+        self.canvas.grid(row=0, column=0, pady=(0, 10))
+
+                # Initialize modules
+        self.bbox_manager = BoundingBoxManager(self.canvas, self.target_res)
+        self.bbox_states = [[] for _ in range(self.bbox_manager.get_bbox_count())]  # Initialize with empty state per bbox
+        
+        # Set up callbacks
+        self.bbox_manager.set_bbox_count_changed_callback(self.on_bbox_count_changed)
+
+
         self.label_states = tk.Label(feedback_frame, text="Bounding box states: \n \n \n",wraplength=800, anchor="w", justify="left")
         self.label_states.grid(row=3, column=0, sticky="w")
 
@@ -340,10 +582,6 @@ class WebcamApp:
         # Add Statistics Widget
         self.statistics_widget = StatisticsWidget(feedback_frame, self.carousel_widget, width=feedback_frame.winfo_width())
         self.statistics_widget.grid(row=6, column=0, sticky="ew", pady=(10,0))
-
-        # add clear statistics button
-        self.btn_clear_stats = ttk.Button(feedback_frame, text="Reset Statistics", command=self.carousel_widget.reset_statistics)
-        self.btn_clear_stats.grid(row=7, column=0, sticky="w", pady=(5,0))
         
         # State variables
         self.show_segmented = False
@@ -404,29 +642,11 @@ class WebcamApp:
         # Send test eject command during auto capture
         self.send_eject_command_with_ui_values([1,1,1]);
         if ret:
-            frame = cv2.resize(frame, self.target_res)
+            frame = cv2.resize(frame, self.target_res_model)
             self.save_image(frame)
         interval = self.auto_capture_interval.get()
         self.root.after(max(1000, int(interval * 1000)), self.auto_capture)
-    
-    def update_exposure(self, value):
-        # Update exposure method to handle string value from ttk Scale
-        self.exposure = float(value)
-        self.exposure_value_label.config(text=f"{float(value):.1f}")
-        # Also set exposure via OpenCV (if supported)
-        if hasattr(self, 'cap') and self.cap is not None:
-            # Map normalized value (0-1) to a typical exposure range, e.g., -8 to -1 for many webcams
-            min_exp, max_exp = 0.01, 1
-            exp_val = float(min_exp + (max_exp - min_exp) * self.exposure)
-            self.cap.set(cv2.CAP_PROP_EXPOSURE, exp_val)
 
-    # def update_conveyor_param_1(self, value):
-    #     self.conveyor_param_1_label.config(text=str(int(float(value))))
-    
-    # def on_bbox_click(self, index):
-    #     # Set the clicked bbox as the selected bbox and redraw
-    #     self.selected_bbox_idx = index
-    #     self.draw_bboxes()
     
     def update_feed(self):
         if not self.show_segmented:
@@ -519,7 +739,7 @@ class WebcamApp:
             """Continuously show YOLO results on the canvas."""
             ret, frame = self.cap.read()
             if ret:
-                frame = cv2.resize(frame, self.target_res)
+                frame = cv2.resize(frame, self.target_res_model)
                 results = self.model(frame)
                 self.draw_yolo_results(results)
             self.root.after(10, self.show_live_yolo_results)
@@ -529,7 +749,8 @@ class WebcamApp:
         self.show_segmented = False
         self.segmented_image = None
         self.show_live = False
-        self.bbox_manager.clear_states()
+        # self.bbox_manager.clear_states()
+        self.reset_bbox_states()
         self.bbox_manager.draw_bboxes()
         # self.carousel_widget.reset_statistics()
         self.statistics_widget.update_display()
@@ -544,13 +765,18 @@ class WebcamApp:
 
     def reconnect_camera(self):
         """Attempt to reconnect the camera if it was lost."""
+        self.target_res = (round(self.camera_x.get()*self.scale_feed.get()), round(self.camera_y.get()*self.scale_feed.get()))
+        self.target_res_model = (round(self.camera_x.get()*self.scale_feed_model.get()), round(self.camera_y.get()*self.scale_feed_model.get()))
+
         if hasattr(self, 'cap') and self.cap is not None:
             self.cap.release()
         time.sleep(0.5)
-        self.cap = cv2.VideoCapture(self.camera_index, self.cap_backend)
+        self.cap = cv2.VideoCapture(self.camera_index.get(), self.cap_backend.get())
         if not self.cap.isOpened():
             print("Failed to reconnect camera.")
             return False
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.camera_x.get())
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.camera_y.get())
         print("Camera reconnected successfully.")
         return True
 
@@ -561,20 +787,15 @@ class WebcamApp:
             ## try to reconnect the camera
             print("Camera read failed")
             # Attempt to reconnect the camera
-            if hasattr(self, 'cap') and self.cap is not None:
-                self.cap.release()
-            time.sleep(0.5)
-            self.cap = cv2.VideoCapture(self.camera_index, self.cap_backend)
-            if not self.cap.isOpened():
-                print("Failed to reconnect camera.")
-                return
+            self.reconnect_camera()
+            # Try reading the frame again
             ret, frame = self.cap.read()
             if not ret:
                 print("Camera still not accessible after reconnect attempt.")
                 return
             return
 
-        frame = cv2.resize(frame, self.target_res)
+        frame = cv2.resize(frame, self.target_res_model)
         results = self.model(frame)
         self.draw_yolo_results(results)
 
@@ -582,7 +803,7 @@ class WebcamApp:
             self.save_image(frame)
         
         # Get current classifications for visible slots
-        self.classify_and_update_bboxes(results, add_to_carousel=True)
+        self.classify_and_update_bboxes(results, frame, add_to_carousel=True)
 
         # 2. Check ejection ports and send serial commands
         eject_array = self.carousel_widget.get_eject_array()
@@ -600,29 +821,32 @@ class WebcamApp:
         self.send_eject_command_with_ui_values(eject_array, self.shake)
         
         # Update PH indicator display
-        self.ph_indicator.update_ph_emoji_labels()
+        # self.ph_indicator.update_ph_emoji_labels()
         
         # Update statistics display
         self.statistics_widget.update_display()
 
-    def classify_and_update_bboxes(self, results, add_to_carousel=True):
+    def classify_and_update_bboxes(self, results, frame, add_to_carousel=True):
 
         self.reset_bbox_states()  # Reset states before classifying
         bboxes = self.bbox_manager.get_bboxes()
         for i, bbox in enumerate(bboxes):
-            classification = self.classify_bbox(i, results, bbox)
+            classification, cropped_image = self.classify_bbox(i, results, bbox, frame)
+            print("!!!!!! cropped image")
+            print(cropped_image.shape)
+            print(cropped_image.dtype)
             if not add_to_carousel:
                 continue
             if i == 0:
                 print(f"add to carousel: Slot {i} classification: {classification}")
                 # For the first slot, create a new Blueberry object and add it to the carousel
-                self.carousel_widget.add_to_carousel(classification)
+                self.carousel_widget.add_to_carousel(classification, cropped_image)
             else:
                 # For subsequent slots, update the history of the existing Blueberry object
                 blueberry = self.carousel_widget.carousel_slots[i]
                 if blueberry:
                     print(f"update slot {i} classification: {classification}")
-                    blueberry.add_classification_attempt(classification)
+                    blueberry.add_classification_attempt(classification, cropped_image)
 
     def send_eject_command_with_ui_values(self, eject_array, shake):
         conveyor_param_1 = self.conveyor_param_1.get()
@@ -638,7 +862,7 @@ class WebcamApp:
         success, message = self.serial_manager.send_eject_command(eject_array, conveyor_param_1, conveyor_param_2, conveyor_param_3, conveyor_param_4, conveyor_param_5)
         self.label_serial_status.config(text=f"Last Serial Command: {message if success else 'Error'}")
     
-    def classify_bbox(self, i, results, bbox):
+    def classify_bbox(self, i, results, bbox, frame):
         """
         Classify the bounding box using YOLO results, considering overlapping boxes and multiple berries.
         Uses centroid proximity to filter overlapping detections.
@@ -661,7 +885,7 @@ class WebcamApp:
                         detections.append({
                             'class': class_names[int(cls)],
                             'score': score,
-                            #'box': box,
+                            'box': box,
                             'centroid': (centroid_x, centroid_y)
                         })
 
@@ -695,25 +919,39 @@ class WebcamApp:
 
         berry_classes = [det['class'] for det in filtered_detections]
         if not berry_classes:
-            return None
+            cropped_image = frame[int(by1):int(by2), int(bx1):int(bx2)]
+            return None, cropped_image  # No detections, return empty classification
 
         # Multiple berry rules
         if len(berry_classes) > 1:
+            # create a bounding box around all detections
+            x1 = min(det['box'][0] for det in filtered_detections)
+            y1 = min(det['box'][1] for det in filtered_detections)
+            x2 = max(det['box'][2] for det in filtered_detections)
+            y2 = max(det['box'][3] for det in filtered_detections)
+            bbox = (x1, y1, x2, y2)
+            # return cropped image of the bounding box
+            cropped_image = frame[int(y1):int(y2), int(x1):int(x2)]
+
             if "OVERRIPE" in berry_classes:
-                return "OVERRIPE"
+                return "OVERRIPE", cropped_image
             elif all(cls == "RIPE" for cls in berry_classes):
-                return "RIPE"
+                return "RIPE", cropped_image
             elif "UNDERRIPE" or "UNDERRIPE-GREEN" in berry_classes and "RIPE" in berry_classes:
-                return "RIPE"
+                return "RIPE", cropped_image
             elif "UNDERRIPE" or "UNDERRIPE-GREEN" in berry_classes:
-                return "UNDERRIPE"
+                return "UNDERRIPE", cropped_image
         else:
+            bbox = det['box']
+            cropped_image = frame[int(bbox[1]):int(bbox[3]), int(bbox[0]):int(bbox[2])]
+            # Return the single classification result
             if berry_classes[0] == "UNDERRIPE-GREEN":
-                return "UNDERRIPE"
+                return "UNDERRIPE", cropped_image
             else:
-                return berry_classes[0]
+                return berry_classes[0], cropped_image
 
 if __name__ == "__main__":
     root = tk.Tk()
+    root.attributes('-fullscreen', True)
     app = WebcamApp(root)
     root.mainloop()

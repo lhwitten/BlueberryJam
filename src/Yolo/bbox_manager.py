@@ -12,9 +12,9 @@ class BoundingBoxManager:
         
         # Define bounding boxes [[TopCornerX, TopCornerY, BottomCornerX, BottomCornerY], ...]
         self.bboxes = [
-            [608, 17, 857, 478], #Box 0
-            [305, 17, 595, 478], #Box 1
-            [15, 12, 292, 483], #Box 2
+            [562, 13, 817, 455], #Box 0
+            [292, 13, 552, 454], #Box 1
+            [11, 13, 283, 455], #Box 2
         ]
         
         # Callback for when bbox count changes

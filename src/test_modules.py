@@ -13,9 +13,9 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
-    from bbox_manager import BoundingBoxManager
-    from serial_manager import SerialManager, SerialControlWidget, PHIndicatorWidget
-    from carousel_widget import CarouselStatusWidget
+    from Yolo.bbox_manager import BoundingBoxManager
+    from Yolo.serial_manager import SerialManager, SerialControlWidget, PHIndicatorWidget
+    from Yolo.carousel_widget import CarouselStatusWidget
     print("✓ All modules imported successfully!")
 except ImportError as e:
     print(f"✗ Import error: {e}")
