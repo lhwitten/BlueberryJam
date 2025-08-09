@@ -28,12 +28,14 @@ class SerialManager:
         self.refresh_available_ports()
         
     def refresh_available_ports(self):
-        """Get list of available serial ports."""
-        ports = serial.tools.list_ports.comports()
+        """Get list of available serial ports (latest at top)."""
+        ports = list(serial.tools.list_ports.comports())
+        # Reverse so newest/last-added is first
+        ports = list(reversed(ports))
         self.available_ports = [port.device for port in ports]
         self.available_descriptions = [port.description for port in ports]
         self.available_hwid = [port.hwid for port in ports]
-        for port in sorted(ports, key=lambda p: p.device):
+        for port in ports:
             print("{}: {} [{}]".format(port.device, port.description, port.hwid))
         if self.available_ports:
             self.serial_port_addr = self.available_ports[0]
@@ -116,7 +118,7 @@ class SerialManager:
                 self.on_trigger_complete()
             self.ph_triggers_received.clear()
     
-    def send_eject_command(self, eject_array, conveyer_1=5, conveyor_2=5, conveyor_3=5, conveyor_4=5, conveyor_5=5):
+    def send_eject_command(self, eject_array, spin=1, conveyer_1=5, conveyor_2=5, conveyor_3=5, conveyor_4=5, conveyor_5=5):
         """
         Send eject command to Arduino.
         
@@ -128,7 +130,7 @@ class SerialManager:
         if self.serial_port and self.serial_port.is_open:
             try:
                 # Convert eject_array (e.g., [0, 0, 1]) to string "001"
-                data = ''.join(str(x) for x in eject_array) + '1' + str(conveyer_1) + str(conveyor_2) + \
+                data = ''.join(str(x) for x in eject_array) + str(spin) + str(conveyer_1) + str(conveyor_2) + \
                                str(conveyor_3) + str(conveyor_4) + str(conveyor_5) + '\n'
                 self.serial_port.write(data.encode('utf-8'))
                 print(f"Sent eject command: {data.strip()}")

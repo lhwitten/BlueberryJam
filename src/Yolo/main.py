@@ -13,7 +13,8 @@ import os
 # Import our custom modules
 from bbox_manager import BoundingBoxManager
 from serial_manager import SerialManager, SerialControlWidget, PHIndicatorWidget
-from carousel_widget import CarouselStatusWidget, Blueberry, StatisticsWidget
+from carousel_widget import CarouselStatusWidget, Blueberry, CroppedImageWidget
+from image_pipeline import ImagePipelineManager
 
 class WebcamApp:
     def __init__(self, root):
@@ -21,7 +22,7 @@ class WebcamApp:
         self.root.title("YOLO Webcam Segmentation")
         
         # Load YOLO model using a robust relative path
-        model_path = os.path.join(os.path.dirname(__file__), "models", "yolo11n-seg.pt")
+        model_path = os.path.join(os.path.dirname(__file__), "models", "best2.pt")
         self.model = YOLO(model_path)
         # self.model = YOLO("best.pt")
 
@@ -29,6 +30,8 @@ class WebcamApp:
         self.class_labels = ["RIPE", "UNDERRIPE", "OVERRIPE"]
         self.slot_classification_history = deque(maxlen=3)  # Track 3 positions by default
         self.current_slot_classifications = []
+        
+        # Image pipeline will be initialized after camera setup
 
         # keyboard bindings
         self.root.bind("<Escape>", lambda e: self.root.quit())
@@ -60,7 +63,7 @@ class WebcamApp:
 
         # Initialize webcam
         cv2.OPENCV_VIDEOIO_DEBUG=1
-        self.camera_index = tk.IntVar(value=0)
+        self.camera_index = tk.IntVar(value=1)
         self.cap_backend = tk.IntVar(value=cv2.CAP_DSHOW)  # DirectShow backend for Windows
         self.cap = cv2.VideoCapture(self.camera_index.get(), self.cap_backend.get())
 
@@ -83,11 +86,11 @@ class WebcamApp:
         # self.camera_y.get() = 1080
         self.scale_feed = tk.DoubleVar(value=0.65)
         self.target_res = (round(self.camera_x.get() * self.scale_feed.get()), round(self.camera_y.get() * self.scale_feed.get()))
-        self.scale_feed_model = tk.DoubleVar(value=0.5)
+        self.scale_feed_model = tk.DoubleVar(value=0.65)
         self.target_res_model = (round(self.camera_x.get()*self.scale_feed_model.get()), round(self.camera_y.get()*self.scale_feed_model.get()))
         self.exposure_unsupported = False  # Now we try to support exposure
         # Create exposure as a tk variable with the current camera exposure value
-        self.exposure = tk.DoubleVar(value=self.cap.get(cv2.CAP_PROP_EXPOSURE))
+        self.exposure = tk.DoubleVar(value=-4.8) # tk.DoubleVar(value=self.cap.get(cv2.CAP_PROP_EXPOSURE))
         
         print('exposure:', self.exposure.get())
 
@@ -207,7 +210,7 @@ class WebcamApp:
 
         # ========================== GAIN CONTROL =========================
 
-        self.gain = tk.DoubleVar(value=self.cap.get(cv2.CAP_PROP_GAIN))
+        self.gain = tk.DoubleVar(value=3.0) #  tk.DoubleVar(value=self.cap.get(cv2.CAP_PROP_GAIN))
         print('gain:', self.gain.get())
 
         tk.Label(camera_controls_frame, text="Gain:").pack(side=tk.LEFT)
@@ -278,7 +281,7 @@ class WebcamApp:
         self.btn_capture.pack(side=tk.LEFT, padx=2)
         self.btn_capture = ttk.Button(btn_frame, text="Step Sort", command=self.classify_and_update_queue)
         self.btn_capture.pack(side=tk.LEFT, padx=2)
-        self.btn_clear = ttk.Button(btn_frame, text="clear", command=self.clear)
+        self.btn_clear = ttk.Button(btn_frame, text="Clear", command=self.clear)
         self.btn_clear.pack(side=tk.LEFT, padx=2)
 
         ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
@@ -341,7 +344,7 @@ class WebcamApp:
         tk.Label(auto_frame, text="Auto Capture:").grid(row=0, column=0, sticky="w")
         self.auto_capture_running = False
         self.auto_capture_interval = tk.IntVar(value=5)
-        self.auto_capture_dir = tk.StringVar(value="/Users/jasper/Desktop/blueberry sorter/BlueberryJam/auto_captures")
+        self.auto_capture_dir = tk.StringVar(value="C:\\Users\\jdavis\\Desktop\\blueberry\\BlueberryJam\\captures")
         self.entry_interval = tk.Entry(auto_frame, textvariable=self.auto_capture_interval, width=5)
         self.entry_interval.grid(row=0, column=1, padx=2, sticky="ew")
         tk.Label(auto_frame, text="seconds").grid(row=0, column=2, sticky="w")
@@ -368,12 +371,12 @@ class WebcamApp:
         # SHAKES:
         motor_frame.pack(fill=tk.X, pady=2)
         tk.Label(motor_frame, text="shake count:").pack(side=tk.LEFT, padx=2)
-        self.conveyor_param_1 = tk.IntVar(value=1)
+        self.conveyor_param_1 = tk.IntVar(value=0)
         self.spinbox_c1 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_1, width=2)
         self.spinbox_c1.pack(side=tk.LEFT, padx=2)
 
         tk.Label(motor_frame, text="PPS:").pack(side=tk.LEFT, padx=2)
-        self.conveyor_param_2 = tk.IntVar(value=6)
+        self.conveyor_param_2 = tk.IntVar(value=4)
         self.spinbox_c2 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_2, width=2)
         self.spinbox_c2.pack(side=tk.LEFT, padx=2)
 
@@ -384,12 +387,12 @@ class WebcamApp:
 
         #DROP off controlls:
         tk.Label(motor_frame, text="Drop:").pack(side=tk.LEFT, padx=2)
-        self.conveyor_param_4 = tk.IntVar(value=3)
+        self.conveyor_param_4 = tk.IntVar(value=4)
         self.spinbox_c4 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_4, width=2)
         self.spinbox_c4.pack(side=tk.LEFT, padx=2)
 
         tk.Label(motor_frame, text="VIB:").pack(side=tk.LEFT, padx=2)
-        self.conveyor_param_5 = tk.IntVar(value=2)
+        self.conveyor_param_5 = tk.IntVar(value=1)
         self.spinbox_c5 = ttk.Spinbox( motor_frame, from_=0, to=9, textvariable=self.conveyor_param_5, width=2)
         self.spinbox_c5.pack(side=tk.LEFT, padx=2)
 
@@ -465,11 +468,11 @@ class WebcamApp:
         shake_frame.pack(fill=tk.X, pady=2)
 
         self.current_sort_count = 0;
-        self.shake = False
+        self.shake = True
 
         # number of sorts between shakes control
         tk.Label(shake_frame, text="Number of sorts between Bucket vibration:").pack(side=tk.LEFT, padx=2)
-        self.shake_interval = tk.IntVar(value=40)
+        self.shake_interval = tk.IntVar(value=65)
         self.spinbox_shake_interval = ttk.Spinbox(shake_frame, from_=1, to=100, textvariable=self.shake_interval, width=3)
         self.spinbox_shake_interval.pack(side=tk.LEFT, padx=2)
 
@@ -515,7 +518,7 @@ class WebcamApp:
             if self.classify_timer_running:
                 self.classify_and_update_queue()
                 if self.shake:
-                    interval_ms = int( (self.conveyor_param_5.get() + 1 ) * 1000)  # Add 1 second for shake
+                    interval_ms = int( (self.conveyor_param_5.get() + 5 ) * 1000)  # Add 1 second for shake
                 else:
                     interval_ms = int(self.classify_interval.get() * 1000)
                 self.root.after(interval_ms, schedule_classify)
@@ -549,7 +552,62 @@ class WebcamApp:
         self.save_images_checkbox = ttk.Checkbutton(btn_frame, variable=self.save_images_var)
         self.save_images_checkbox.pack(side=tk.LEFT, padx=2)
 
+
         ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
+
+        # ==========================================================================================================
+        # ======================================= CLASSIFICATION THRESHOLD =========================================
+        # ==========================================================================================================
+
+        # Classification threshold controls
+        threshold_frame = tk.Frame(controls_frame)
+        threshold_frame.pack(fill=tk.X, pady=2)
+        tk.Label(threshold_frame, text="Threshold Ripe:").pack(side=tk.LEFT, padx=2)
+        self.classification_threshold_ripe = tk.DoubleVar(value=0.5)
+        self.input_classification_threshold_ripe = ttk.Spinbox(
+            threshold_frame,
+            from_=0.0,
+            to=1.0,
+            increment=0.01,
+            textvariable=self.classification_threshold_ripe,
+            format="%.2f",
+            width=5
+        )
+        self.input_classification_threshold_ripe.pack(side=tk.LEFT, padx=2)
+
+        tk.Label(threshold_frame, text="Underripe:").pack(side=tk.LEFT, padx=2)
+        self.classification_threshold_underripe = tk.DoubleVar(value=0.5)
+        self.input_classification_threshold_underripe = ttk.Spinbox(
+            threshold_frame,
+            from_=0.0,
+            to=1.0,
+            increment=0.01,
+            textvariable=self.classification_threshold_underripe,
+            format="%.2f",
+            width=5
+        )
+        self.input_classification_threshold_underripe.pack(side=tk.LEFT, padx=2)
+
+        tk.Label(threshold_frame, text="Overripe:").pack(side=tk.LEFT, padx=2)
+        self.classification_threshold_overripe = tk.DoubleVar(value=0.8)
+        self.input_classification_threshold_overripe = ttk.Spinbox(
+            threshold_frame,
+            from_=0.0,
+            to=1.0,
+            increment=0.01,
+            textvariable=self.classification_threshold_overripe,
+            format="%.2f",
+            width=5
+        )
+        self.input_classification_threshold_overripe.pack(side=tk.LEFT, padx=2)
+        # Bind the spinboxes to update the thresholds
+        
+        ttk.Separator(controls_frame, orient='horizontal').pack(fill=tk.X, pady=4)
+
+
+        # ===========================================================================================================
+        # ======================================== CAROUSEL STATUS WIDGET ============================================
+        # ==================================================================================================
 
         # --- Add Carousel Status Widget at the bottom of controls column ---
         self.carousel_widget = CarouselStatusWidget(controls_frame)
@@ -558,16 +616,25 @@ class WebcamApp:
         # ======================================== FEEDBACK / STATE OUTPUT ========================================
         # ==========================================================================================================
 
-                # Canvas (video feed) at the top of feedback column
+        # Canvas (video feed) at the top of feedback column
         self.canvas = tk.Canvas(feedback_frame, width=self.target_res[0], height=self.target_res[1])
         self.canvas.grid(row=0, column=0, pady=(0, 10))
 
-                # Initialize modules
+        # Initialize modules
         self.bbox_manager = BoundingBoxManager(self.canvas, self.target_res)
         self.bbox_states = [[] for _ in range(self.bbox_manager.get_bbox_count())]  # Initialize with empty state per bbox
         
         # Set up callbacks
         self.bbox_manager.set_bbox_count_changed_callback(self.on_bbox_count_changed)
+        
+        # Initialize the image pipeline manager
+        self.image_pipeline = ImagePipelineManager(
+            camera=self.cap,
+            model=self.model,
+            target_res=self.target_res,
+            target_res_model=self.target_res_model,
+            canvas=self.canvas
+        )
 
 
         self.label_states = tk.Label(feedback_frame, text="Bounding box states: \n \n \n",wraplength=800, anchor="w", justify="left")
@@ -578,10 +645,14 @@ class WebcamApp:
 
         self.label_serial_status = tk.Label(feedback_frame, text="Last Serial Command: None", wraplength=600, anchor="w", justify="left")
         self.label_serial_status.grid(row=5, column=0, sticky="w", pady=(5,0))
+
+        # add cropped image widget
+        self.cropped_image_widget = CroppedImageWidget(feedback_frame, self.carousel_widget ) # , width=feedback_frame.winfo_width())
+        self.cropped_image_widget.grid(row=6, column=0, sticky="ew", pady=(0,0))   
         
-        # Add Statistics Widget
-        self.statistics_widget = StatisticsWidget(feedback_frame, self.carousel_widget, width=feedback_frame.winfo_width())
-        self.statistics_widget.grid(row=6, column=0, sticky="ew", pady=(10,0))
+        # # Add Statistics Widget
+        # self.statistics_widget = StatisticsWidget(feedback_frame, self.carousel_widget, width=feedback_frame.winfo_width())
+        # self.statistics_widget.grid(row=6, column=0, sticky="ew", pady=(10,0))
         
         # State variables
         self.show_segmented = False
@@ -638,44 +709,57 @@ class WebcamApp:
         """Automatically capture images at regular intervals."""
         if not self.auto_capture_running:
             return
-        ret, frame = self.cap.read()
+            
+        # Use the image pipeline for more consistent behavior
+        self.image_pipeline.show_segmented = True
+        success, _ = self.image_pipeline.execute_pipeline(
+            bbox_manager=self.bbox_manager,
+            save_image=True,
+            save_dir=self.auto_capture_dir.get()
+        )
+        
         # Send test eject command during auto capture
-        self.send_eject_command_with_ui_values([1,1,1]);
-        if ret:
-            frame = cv2.resize(frame, self.target_res_model)
-            self.save_image(frame)
+        self.send_eject_command_with_ui_values([1,1,1], self.shake)
+        
+        # Schedule next capture
         interval = self.auto_capture_interval.get()
         self.root.after(max(1000, int(interval * 1000)), self.auto_capture)
 
     
     def update_feed(self):
-        if not self.show_segmented:
-            ret, frame = self.cap.read()
-            if ret:
-                frame = cv2.resize(frame, self.target_res)
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                self.photo = ImageTk.PhotoImage(image=Image.fromarray(frame))
-                if self.image_id is None:
-                    self.image_id = self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)
-                else:
-                    self.canvas.itemconfig(self.image_id, image=self.photo)
+        """Update the video feed on the canvas using the image pipeline."""
+        if not self.show_live:  # Only update feed if not in live YOLO mode
+            # Use the image pipeline to capture and display a frame
+            self.image_pipeline.show_segmented = False  # Regular camera view (no segmentation)
+            success = self.image_pipeline.capture_frame() and self.image_pipeline.process_frame()
+            
+            if success:
+                self.image_pipeline.create_display_image()
+                self.image_pipeline.update_display()
                 self.bbox_manager.draw_bboxes()
-        elif self.segmented_image is not None:
-            self.photo = ImageTk.PhotoImage(image=Image.fromarray(self.segmented_image))
-            if self.image_id is None:
-                self.image_id = self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)
-            else:
-                self.canvas.itemconfig(self.image_id, image=self.photo)
-            self.bbox_manager.draw_bboxes()
-        self.root.after(10, self.update_feed)
+            
+            self.root.after(10, self.update_feed)
+        #         self.canvas.itemconfig(self.image_id, image=self.photo)
+        #     self.bbox_manager.draw_bboxes()
     
     def capture(self):
-        ret, frame = self.cap.read()
-        if ret:
-            frame = cv2.resize(frame, self.target_res)
-            results = self.model(frame)
-            self.classify_and_update_bboxes(results, add_to_carousel=False);
-            self.draw_yolo_results(results)
+        
+        """Capture a frame and classify using the image pipeline."""
+        # Stop regular feed updates and enable YOLO display
+        self.show_live = True
+        self.show_segmented = True
+        
+        # Enable segmentation display and run the full pipeline
+        self.image_pipeline.show_segmented = True
+        success, classifications = self.image_pipeline.execute_pipeline(
+            bbox_manager=self.bbox_manager,
+            save_image=False
+        )
+        
+        # Make sure bounding boxes are drawn
+        if success:
+            self.bbox_manager.draw_bboxes()
+            print("YOLO capture completed and displayed - results will remain until cleared")
 
     def reset_bbox_states(self):
         """Reset bounding box states to empty lists."""
@@ -713,48 +797,77 @@ class WebcamApp:
         state_text = "Bounding Box States:\n" + "\n".join(lines)
         self.label_states.config(text=state_text)
 
-    def draw_yolo_results(self, results):
-        """Draw YOLO segmentation and box results on the canvas."""
-        annotated_frame = results[0].plot()
-        annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-        annotated_frame = cv2.resize(annotated_frame, self.target_res)
-        self.segmented_image = annotated_frame
-        self.show_segmented = True
-        self.photo = ImageTk.PhotoImage(image=Image.fromarray(self.segmented_image))
-        
-        if self.image_id is None:
-            self.image_id = self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)
-        else:
-            self.canvas.itemconfig(self.image_id, image=self.photo)
-        
-        self.bbox_manager.draw_bboxes()
-
     def toggle_live(self):
+        """Toggle live mode to continuously show YOLO results."""
         self.show_live = not self.show_live
         if self.show_live:
+            # Start live YOLO mode
+            self.show_segmented = True
+            self.image_pipeline.show_segmented = True
             self.show_live_yolo_results()
+        else:
+            # Exit live mode and return to normal camera view
+            self.show_segmented = False
+            self.image_pipeline.show_segmented = False
+            self.clear()
 
     def show_live_yolo_results(self):
-        if self.show_live:
-            """Continuously show YOLO results on the canvas."""
-            ret, frame = self.cap.read()
-            if ret:
-                frame = cv2.resize(frame, self.target_res_model)
-                results = self.model(frame)
-                self.draw_yolo_results(results)
-            self.root.after(10, self.show_live_yolo_results)
+        """Continuously show YOLO results on the canvas."""
+        if not self.show_live:
+            return
+        
+        # Force segmentation mode to be active
+        self.show_segmented = True
+        
+        # Use the image pipeline to capture, process, analyze and display
+        self.image_pipeline.show_segmented = True
+        
+        # Run the full pipeline with analysis
+        success = self.image_pipeline.capture_frame()
+        if success:
+            self.image_pipeline.process_frame()
+            self.image_pipeline.analyze_frame()
+            self.image_pipeline.create_display_image()
+            self.image_pipeline.update_display()
+            self.bbox_manager.draw_bboxes()
+            
+        # Continue the loop if still in live mode
+        self.root.after(10, self.show_live_yolo_results)
 
     def clear(self):
-        """Clear the canvas and stop live view."""
+        """Clear the canvas and restart the regular camera feed."""
+        # Reset UI state first to prevent further processing of old frames
         self.show_segmented = False
-        self.segmented_image = None
         self.show_live = False
-        # self.bbox_manager.clear_states()
         self.reset_bbox_states()
+        
+        # Temporarily stop all image processing
+        self.root.update_idletasks()
+        
+        # Reset all image pipeline state
+        self.image_pipeline.clear_all()
+        
+        # Clear the camera buffer by reading a few frames and discarding them
+        for _ in range(3):
+            self.cap.read()
+            
+        # Immediately capture and show a fresh frame
+        ret, frame = self.cap.read()
+        if ret:
+            # Process and display this frame directly
+            processed = cv2.resize(frame.copy(), self.image_pipeline.target_res)
+            rgb_frame = cv2.cvtColor(processed, cv2.COLOR_BGR2RGB)
+            photo = ImageTk.PhotoImage(image=Image.fromarray(rgb_frame))
+            self.image_pipeline.photo = photo
+            self.image_pipeline.analyzed_frame = rgb_frame
+            self.image_pipeline.update_display()
+        
+        # Update UI components
         self.bbox_manager.draw_bboxes()
-        # self.carousel_widget.reset_statistics()
-        self.statistics_widget.update_display()
-        self.image_id = None  # Reset image ID to stop live view updates
+        self.cropped_image_widget.update_display()
+        
+        # Always restart the feed when explicitly clearing
+        self.update_feed()
     
     def __del__(self):
         """Ensure resources are cleaned up."""
@@ -777,77 +890,147 @@ class WebcamApp:
             return False
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.camera_x.get())
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.camera_y.get())
+        
+        # Update the image pipeline with the new camera
+        self.image_pipeline.camera = self.cap
+        self.image_pipeline.target_res = self.target_res
+        self.image_pipeline.target_res_model = self.target_res_model
+        
         print("Camera reconnected successfully.")
         return True
+    
+    # The draw_yolo_results method has been replaced by the image pipeline's
+    # execute_pipeline method which handles displaying annotated images
 
     def classify_and_update_queue(self):
-        # 1. Take picture and classify slots 0, 1, 2
-        ret, frame = self.cap.read()
-        if not ret:
-            ## try to reconnect the camera
+        """Classify the current frame and update the carousel queue."""
+        # Stop regular feed updates and keep showing YOLO results
+        self.show_live = True
+        self.show_segmented = True
+
+        self.image_pipeline.set_score_thresholds(
+            ripe=self.classification_threshold_ripe.get(),
+            underripe=self.classification_threshold_underripe.get(),
+            underripe_green=self.classification_threshold_underripe.get(),
+            overripe=self.classification_threshold_overripe.get()
+        )
+        
+        # Force UI update to ensure we're seeing the most current camera view before we process
+        self.root.update_idletasks()
+        
+        # Completely reset image pipeline to ensure fresh capture
+        self.image_pipeline.clear_all()  # This will also flush the camera buffer
+        
+        # Capture a few frames to ensure we're looking at current data
+        for _ in range(3):
+            self.cap.read()  # Read and discard a few frames
+        
+        # 1. Capture image, process it, and classify bounding boxes using the pipeline
+        self.image_pipeline.show_segmented = True  # Enable YOLO result display
+        success, classifications = self.image_pipeline.execute_pipeline(
+            bbox_manager=self.bbox_manager,
+            save_image=self.save_images_var.get(),
+            save_dir=self.auto_capture_dir.get() if self.save_images_var.get() else None
+        )
+        
+        if not success:
+            # If capture failed, attempt to reconnect camera
             print("Camera read failed")
-            # Attempt to reconnect the camera
-            self.reconnect_camera()
-            # Try reading the frame again
-            ret, frame = self.cap.read()
-            if not ret:
+            if not self.reconnect_camera():
                 print("Camera still not accessible after reconnect attempt.")
                 return
-            return
-
-        frame = cv2.resize(frame, self.target_res_model)
-        results = self.model(frame)
-        self.draw_yolo_results(results)
-
-        if self.save_images_var.get():
-            self.save_image(frame)
+            
+            # Try again after reconnect
+            success, classifications = self.image_pipeline.execute_pipeline(
+                bbox_manager=self.bbox_manager,
+                save_image=self.save_images_var.get(),
+                save_dir=self.auto_capture_dir.get() if self.save_images_var.get() else None
+            )
+            
+            if not success:
+                return
         
-        # Get current classifications for visible slots
-        self.classify_and_update_bboxes(results, frame, add_to_carousel=True)
-
+        # Update carousel with classifications
+        self.update_carousel_with_classifications(classifications)
+        
         # 2. Check ejection ports and send serial commands
         eject_array = self.carousel_widget.get_eject_array()
-
         self.label_eject_array.config(text=f"Eject array: {eject_array}")
 
-        #increment sort count up to shake interval and wrap around
+        # Increment sort count up to shake interval and wrap around
         self.current_sort_count += 1
         self.shake = False
-        if self.current_sort_count == self.shake_interval.get():
+        if self.current_sort_count >= self.shake_interval.get():
             self.current_sort_count = 0
             self.shake = True
         
         # 3. Send serial commands
         self.send_eject_command_with_ui_values(eject_array, self.shake)
         
-        # Update PH indicator display
-        # self.ph_indicator.update_ph_emoji_labels()
+        # 4. Update UI components and ensure the segmented image is displayed
+        self.cropped_image_widget.update_display()
         
-        # Update statistics display
-        self.statistics_widget.update_display()
+        # Make sure bounding boxes are visible
+        self.bbox_manager.draw_bboxes()
+        
+        # Segmented display will stay visible until user clears it or runs another operation
 
-    def classify_and_update_bboxes(self, results, frame, add_to_carousel=True):
-
-        self.reset_bbox_states()  # Reset states before classifying
-        bboxes = self.bbox_manager.get_bboxes()
-        for i, bbox in enumerate(bboxes):
-            classification, cropped_image = self.classify_bbox(i, results, bbox, frame)
-            print("!!!!!! cropped image")
-            print(cropped_image.shape)
-            print(cropped_image.dtype)
-            if not add_to_carousel:
-                continue
+    def clear_and_restart_feed(self):
+        """Clear the display and restart the regular camera feed."""
+        self.show_live = False
+        self.show_segmented = False
+        self.clear()
+        
+    def update_carousel_with_classifications(self, classifications):
+        """
+        Update the carousel with the classifications returned by the image pipeline.
+        
+        Args:
+            classifications: List of (classification, cropped_image) tuples for each bbox
+        """
+        if not classifications:
+            return
+            
+        # Reset bbox states before updating with new classifications
+        self.reset_bbox_states()
+        
+        # Update the carousel based on classifications
+        for i, (classification, cropped_image) in enumerate(classifications):
+            # Update the bbox states in the UI
+            if classification:
+                self.bbox_states[i] = [{'class': classification, 'score': 1.0, 'centroid': (0, 0)}]
+            
+            # Update the carousel
             if i == 0:
-                print(f"add to carousel: Slot {i} classification: {classification}")
                 # For the first slot, create a new Blueberry object and add it to the carousel
                 self.carousel_widget.add_to_carousel(classification, cropped_image)
             else:
                 # For subsequent slots, update the history of the existing Blueberry object
                 blueberry = self.carousel_widget.carousel_slots[i]
                 if blueberry:
-                    print(f"update slot {i} classification: {classification}")
                     blueberry.add_classification_attempt(classification, cropped_image)
+        
+        # Update the bbox states display
+        self.set_bboxes_states_from_classifications(classifications)
 
+    def set_bboxes_states_from_classifications(self, classifications):
+        """
+        Update the bbox states display based on the classifications.
+        
+        Args:
+            classifications: List of (classification, cropped_image) tuples
+        """
+        lines = []
+        for i, (classification, _) in enumerate(classifications):
+            if classification:
+                line = f"BOX{i+1}: {classification}"
+            else:
+                line = f"BOX{i+1}: None"
+            lines.append(line)
+            
+        state_text = "Bounding Box States:\n" + "\n".join(lines)
+        self.label_states.config(text=state_text)
+        
     def send_eject_command_with_ui_values(self, eject_array, shake):
         conveyor_param_1 = self.conveyor_param_1.get()
         conveyor_param_2 = self.conveyor_param_2.get()
@@ -856,99 +1039,21 @@ class WebcamApp:
         if shake:
             conveyor_param_1 = 9
             conveyor_param_5 = self.conveyor_param_5.get()
+            success, message = self.serial_manager.send_eject_command([0,0,0], 1 , conveyor_param_1, conveyor_param_2, conveyor_param_3, conveyor_param_4, conveyor_param_5)
+            self.label_serial_status.config(text=f"Last Serial Command: {message if success else 'Error'}")
+            print(f"Shake activated - sent eject command with shake params: {conveyor_param_1}, {conveyor_param_2}, {conveyor_param_3}, {conveyor_param_4}, {conveyor_param_5}")
+            #send aditional shake command to the arduino to shake conveyor belt again after 1 second
+            # time.sleep(1)
+            # success, message = self.serial_manager.send_eject_command([0,0,0], 1, conveyor_param_1, conveyor_param_2, conveyor_param_3, conveyor_param_4, 0)
+            # time.sleep(1)
+            # success, message = self.serial_manager.send_eject_command(eject_array, 1, conveyor_param_1, conveyor_param_2, conveyor_param_3, conveyor_param_4, 0)
         else:
             conveyor_param_1 = self.conveyor_param_1.get()
             conveyor_param_5 = 0
-        success, message = self.serial_manager.send_eject_command(eject_array, conveyor_param_1, conveyor_param_2, conveyor_param_3, conveyor_param_4, conveyor_param_5)
-        self.label_serial_status.config(text=f"Last Serial Command: {message if success else 'Error'}")
+            success, message = self.serial_manager.send_eject_command(eject_array, 1, conveyor_param_1, conveyor_param_2, conveyor_param_3, conveyor_param_4, conveyor_param_5)
+            self.label_serial_status.config(text=f"Last Serial Command: {message if success else 'Error'}")
     
-    def classify_bbox(self, i, results, bbox, frame):
-        """
-        Classify the bounding box using YOLO results, considering overlapping boxes and multiple berries.
-        Uses centroid proximity to filter overlapping detections.
-        """
-        bx1, by1, bx2, by2 = bbox
-        detections = []
-
-        for result in results:
-            if result.boxes and result.boxes.xyxy is not None:
-                boxes = result.boxes.xyxy.cpu().numpy()
-                classes = result.boxes.cls.cpu().numpy()
-                scores = result.boxes.conf.cpu().numpy()
-                class_names = result.names
-
-                for box, cls, score in zip(boxes, classes, scores):
-                    x1, y1, x2, y2 = box[:4]
-                    centroid_x = (x1 + x2) / 2
-                    centroid_y = (y1 + y2) / 2
-                    if bx1 <= centroid_x <= bx2 and by1 <= centroid_y <= by2:
-                        detections.append({
-                            'class': class_names[int(cls)],
-                            'score': score,
-                            'box': box,
-                            'centroid': (centroid_x, centroid_y)
-                        })
-
-        # Filter overlapping detections by centroid proximity (e.g., within 10 pixels)
-        filtered_detections = []
-        used = set()
-        for idx, det in enumerate(detections):
-            if idx in used:
-                continue
-            cx1, cy1 = det['centroid']
-            best_det = det
-            for jdx, other in enumerate(detections):
-                if jdx == idx or jdx in used:
-                    continue
-                cx2, cy2 = other['centroid']
-                if abs(cx1 - cx2) <= 10 and abs(cy1 - cy2) <= 10:
-                    # Keep the one with higher score
-                    if other['score'] > best_det['score']:
-                        best_det = other
-                    used.add(jdx)
-            filtered_detections.append(best_det)
-            used.add(idx)
-
-                # Remove detections under a score threshold
-        SCORE_THRESHOLD = 0.5
-        filtered_detections = [det for det in detections if det['score'] >= SCORE_THRESHOLD]
-
-        self.set_bboxes_states(i, filtered_detections)
-        print(f"Slot {i} detections: {detections}")
-        print(f"Filtered detections: {filtered_detections}")
-
-        berry_classes = [det['class'] for det in filtered_detections]
-        if not berry_classes:
-            cropped_image = frame[int(by1):int(by2), int(bx1):int(bx2)]
-            return None, cropped_image  # No detections, return empty classification
-
-        # Multiple berry rules
-        if len(berry_classes) > 1:
-            # create a bounding box around all detections
-            x1 = min(det['box'][0] for det in filtered_detections)
-            y1 = min(det['box'][1] for det in filtered_detections)
-            x2 = max(det['box'][2] for det in filtered_detections)
-            y2 = max(det['box'][3] for det in filtered_detections)
-            bbox = (x1, y1, x2, y2)
-            # return cropped image of the bounding box
-            cropped_image = frame[int(y1):int(y2), int(x1):int(x2)]
-
-            if "OVERRIPE" in berry_classes:
-                return "OVERRIPE", cropped_image
-            elif all(cls == "RIPE" for cls in berry_classes):
-                return "RIPE", cropped_image
-            elif "UNDERRIPE" or "UNDERRIPE-GREEN" in berry_classes and "RIPE" in berry_classes:
-                return "RIPE", cropped_image
-            elif "UNDERRIPE" or "UNDERRIPE-GREEN" in berry_classes:
-                return "UNDERRIPE", cropped_image
-        else:
-            bbox = det['box']
-            cropped_image = frame[int(bbox[1]):int(bbox[3]), int(bbox[0]):int(bbox[2])]
-            # Return the single classification result
-            if berry_classes[0] == "UNDERRIPE-GREEN":
-                return "UNDERRIPE", cropped_image
-            else:
-                return berry_classes[0], cropped_image
+    # The classify_bbox method has been moved to the ImagePipelineManager class
 
 if __name__ == "__main__":
     root = tk.Tk()

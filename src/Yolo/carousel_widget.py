@@ -1,21 +1,19 @@
 import tkinter as tk
+from PIL import Image, ImageTk
 import numpy as np
 from collections import deque, Counter
 import time
 
 class Blueberry:
     """Represents a blueberry with classification history."""
-    def __init__(self, initial_classification, cropped_image=None):
+    def __init__(self, initial_classification, cropped_image):
         self.history = [initial_classification]  # Stores classification attempts
-        self.images = []  # Store cropped images if needed
-        if cropped_image is not None:
-            self.images.append(cropped_image)
+        self.images = [cropped_image]  # Stores cropped images
 
-    def add_classification_attempt(self, classification, image=None):
+    def add_classification_attempt(self, classification, image):
         """Add a classification attempt to the history."""
         self.history.append(classification)
-        if image is not None:
-            self.images.append(image)
+        self.images.append(image)
 
     def determine_final_class(self):
         """Determine the final classification based on history."""
@@ -36,7 +34,7 @@ class CarouselStatusWidget:
         "SELECTED": {"fill": "#fffbe6", "outline": "#ffcc00"}  # Highlight color
     }
 
-    def __init__(self, parent_frame, width=400, height=320):
+    def __init__(self, parent_frame, width=400, height=280):
         self.parent_frame = parent_frame
         self.width = width
         self.height = height
@@ -57,13 +55,21 @@ class CarouselStatusWidget:
 
         self.selected_slot = None  # Track the currently selected slot
 
+        # Create frame for label and reset button
+        self.header_frame = tk.Frame(parent_frame)
+        self.header_frame.pack(side=tk.TOP, fill=tk.X, pady=(2, 2))
+        
         # Create label
-        self.label = tk.Label(parent_frame, text="Carousel Slots:")
-        self.label.pack(side=tk.TOP, pady=(2, 2))
+        self.label = tk.Label(self.header_frame, text="Carousel Slots:")
+        self.label.pack(side=tk.LEFT, pady=(2, 2))
+        
+        # Add reset statistics button
+        self.reset_button = tk.Button(self.header_frame, text="Reset Statistics", command=self.reset_statistics)
+        self.reset_button.pack(side=tk.RIGHT, padx=(0, 5))
         
         # Create canvas
         self.canvas = tk.Canvas(parent_frame, width=width, height=height, highlightthickness=0)
-        self.canvas.pack(side=tk.TOP, pady=(2, 0))
+        self.canvas.pack(side=tk.TOP, pady=(0, 0))
         
         # Tooltip variables
         self.tooltip = None
@@ -76,12 +82,18 @@ class CarouselStatusWidget:
         
         # Initial draw
         self.draw_carousel_status()
+        
+        # Set up auto-refresh for statistics
+        self.auto_refresh()
+
+        self.selection_callbacks = []
+
+    def register_selection_callback(self, callback):
+        self.selection_callbacks.append(callback)
     
-    def add_to_carousel(self, initial_classification, cropped_image=None):
+    def add_to_carousel(self, initial_classification, cropped_image):
         """Add a new Blueberry object to the carousel queue."""
-        blueberry = Blueberry(initial_classification)
-        if cropped_image is not None:
-            blueberry.images.append(cropped_image)
+        blueberry = Blueberry(initial_classification, cropped_image)
         self.carousel_slots.appendleft(blueberry)
         self.draw_carousel_status()
     
@@ -105,8 +117,8 @@ class CarouselStatusWidget:
         """Draws the circular carousel status display."""
         self.canvas.delete("all")
         n = len(self.carousel_slots)
-        cx, cy = self.width // 2, self.height // 2  # Center of the canvas
-        r = min(self.width, self.height) // 3       # Radius of the circle
+        cx, cy = self.width // 2, self.height // 2 - 20  # Center of the canvas
+        r = min(self.width, self.height) // 3.5      # Radius of the circle
         circle_r = 10
         r2 = r + circle_r*2*1.1  # Radius for outer perimeter circle
 
@@ -181,7 +193,7 @@ class CarouselStatusWidget:
             )
 
         # draw pie chart in the center of the carousel
-        pie_radius = (r - circle_r) * 0.9
+        pie_radius = (r - circle_r) * 0.8
         pie_center_x = cx
         pie_center_y = cy
         self.canvas.create_oval(
@@ -209,9 +221,32 @@ class CarouselStatusWidget:
         else:
             # Draw empty pie chart
             self.canvas.create_text(
-                pie_center_x, pie_center_y, text="No berries sorted yet",
+                pie_center_x, pie_center_y, text="No berries\nsorted yet",
                 fill="#666", font=("Arial", 10)
             )
+            
+        # Draw statistics at bottom of canvas
+        stats_data = self.get_statistics()
+        total_time = stats_data["total_time"]
+        berries_per_minute = stats_data["berries_per_minute"]
+        total_berries = stats_data["total_berries"]
+        
+        # Format time as HH:MM:SS
+        hours = int(total_time // 3600)
+        minutes = int((total_time % 3600) // 60)
+        seconds = int(total_time % 60)
+        time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        
+        # Position statistics text at the bottom of the canvas
+        stats_y = self.height - 40
+        self.canvas.create_text(
+            cx, stats_y, text=f"Total Time: {time_str}",
+            fill="#222", font=("Arial", 10, "bold")
+        )
+        self.canvas.create_text(
+            cx, stats_y + 15, text=f"Rate: {berries_per_minute:.1f} berries/min | Total: {total_berries} berries",
+            fill="#222", font=("Arial", 10, "bold")
+        )
 
     def clear_carousel(self):
         """Clear all items from the carousel."""
@@ -263,6 +298,11 @@ class CarouselStatusWidget:
         else:
             self.hide_tooltip()
 
+    def set_selected_slot(self, slot_num):
+        self.selected_slot = slot_num
+        for callback in self.selection_callbacks:
+            callback()
+
     def on_slot_click(self, event):
         """Handle mouse click to select a slot and highlight it."""
         overlapping = self.canvas.find_overlapping(event.x, event.y, event.x, event.y)
@@ -279,10 +319,12 @@ class CarouselStatusWidget:
             if slot_num is not None:
                 break
         if slot_num is not None:
-            self.selected_slot = slot_num
+            self.set_selected_slot(slot_num)
+            self.draw_carousel_status()
             self.draw_carousel_status()
         else:
-            self.selected_slot = None
+            self.set_selected_slot(None)
+            self.draw_carousel_status()
             self.draw_carousel_status()
     
     def show_tooltip(self, x, y, slot_num):
@@ -357,205 +399,148 @@ class CarouselStatusWidget:
             self.tooltip = None
             self.tooltip_slot = None
 
-    def get_selected_images(self):
+    def auto_refresh(self):
+        """Refresh the carousel display every second to update statistics."""
+        self.draw_carousel_status()
+        # Schedule the next refresh
+        self.parent_frame.after(1000, self.auto_refresh)
+    
+    def get_selected_blueberries(self):
         """Get the currently selected blueberry object."""
-        # check if it is a number and within range
-        if self.selected_slot is not None and 0 <= self.selected_slot < len(self.carousel_slots):
-            return self.carousel_slots[self.selected_slot]
+        
         # check if selected slot is a classification label, and not a slot number, and return all images that match
-        elif isinstance(self.selected_slot, str) and self.selected_slot in self.carousel_slots:
+        if isinstance(self.selected_slot, str) and self.selected_slot in self.class_labels:
             # Return all blueberries that match the selected classification label
             return [blueberry for blueberry in self.carousel_slots if blueberry and blueberry.determine_final_class() == self.selected_slot]
+        # check if it is a number and within range, and return the blueberry object's images
+        elif isinstance(self.selected_slot, int) and 0 <= self.selected_slot < len(self.carousel_slots):
+            blueberry = self.carousel_slots[self.selected_slot]
+            if blueberry:
+                return [blueberry]
+            # for debugging, print the blueberry object info:
+            print(f"blueberry object at slot {self.selected_slot}: {blueberry}")
         return None
+    
+
 
 class CroppedImageWidget:
-    """Widget for displaying cropped images berry image history."""
+    """Widget for displaying cropped images berry image history in a row, scrollable if overflow."""
     # Images are displayed in a row, with the most recent on the left.
-    # the selected slot is chosen by clicking 
-    
-    def __init__(self, parent_frame, carousel_widget, width=600, height=100):
+    # The selected slot is chosen by clicking.
+
+    def __init__(self, parent_frame, carousel_widget, width=600, height=100):  # Increased default height
         self.parent_frame = parent_frame
         self.carousel_widget = carousel_widget
+        self.carousel_widget.register_selection_callback(self.update_display)
+
         self.width = width
         self.height = height
-        
+
         # Create main frame
-        self.frame = tk.Frame(parent_frame)
-        
-        # Create canvas for displaying cropped images
-        self.canvas = tk.Canvas(self.frame, width=width, height=height, highlightthickness=0)
-        self.canvas.pack()
-        
-        # Pack the main frame
-        self.frame.pack(pady=(10, 0))
+        self.frame = tk.Frame(parent_frame, width=width, height=height)
+        self.frame.pack_propagate(False)
+
+        # Create a canvas for scrolling
+        self.canvas = tk.Canvas(self.frame, width=width, height=height)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Add horizontal scrollbar
+        self.scrollbar = tk.Scrollbar(self.frame, orient=tk.HORIZONTAL, command=self.canvas.xview)
+        self.scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+        self.canvas.configure(xscrollcommand=self.scrollbar.set)
+
+        # Create image container frame inside canvas
+        self.images_frame = tk.Frame(self.canvas, height=height-20)  # Account for scrollbar height
+        self.images_frame_id = self.canvas.create_window((0, 0), window=self.images_frame, anchor="nw")
+
+        self.tk_images = []  # Keep references to avoid garbage collection
+
+        # Bind resizing to update scroll region
+        self.images_frame.bind("<Configure>", self._on_frame_configure)
 
         self.update_display()  # Initial display update
-    
+
+    def _on_frame_configure(self, event):
+        # Update scroll region to fit the inner frame
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
     def pack(self, **kwargs):
         """Pack the main frame."""
         self.frame.pack(**kwargs)
-    
+
     def grid(self, **kwargs):
         """Grid the main frame."""
         self.frame.grid(**kwargs)
-    
-    def display_image(self, image):
-        """Display a cropped image on the canvas."""
-        if image is not None:
-            self.canvas.create_image(0, 0, anchor=tk.NW, image=image)
 
     def update_display(self):
         """Update the display with cropped images from the selected slot."""
-        self.canvas.delete("all")
+        # Clear previous images
+        for widget in self.images_frame.winfo_children():
+            widget.destroy()
+        self.tk_images.clear()
 
-        # Get the selected blueberry
-        images = self.carousel_widget.get_selected_images()
-        if blueberry:
-            # Display the cropped image
-            cropped_image = blueberry.get_cropped_image(self.width, self.height)
-            self.display_image(cropped_image)
+        # Get the selected blueberries
+        blueberries = self.carousel_widget.get_selected_blueberries()
 
+        if blueberries:
+            # Display images from the selected blueberry objects
+            for blueberry in blueberries:
+                final_class = blueberry.determine_final_class()
+                border_color = self.carousel_widget.COLORS.get(final_class, self.carousel_widget.COLORS[None])["outline"]
+                for idx, image in enumerate(blueberry.images):
+                    if isinstance(image, str):
+                        image = Image.open(image)
+                    elif isinstance(image, np.ndarray):
+                        image = Image.fromarray(image[..., ::-1].astype('uint8'))
 
-class StatisticsWidget:
-    """Widget for displaying sorting statistics with a horizontal stacked bar chart."""
-    
-    def __init__(self, parent_frame, carousel_widget, width=600, height=85):
-        self.parent_frame = parent_frame
-        self.carousel_widget = carousel_widget
-        self.width = width
-        self.height = height
-        
-        # Create main frame
-        self.frame = tk.Frame(parent_frame)
-        
-        # Create text frame for statistics
-        self.text_frame = tk.Frame(self.frame)
-        self.text_frame.pack(anchor="w", side=tk.LEFT, padx=(0, 20))
-        
-        # Statistics labels
-        self.time_label = tk.Label(self.text_frame, text="Total Time: 0:00:00", anchor="w", justify="left")
-        self.time_label.pack(anchor="w")
-        
-        self.rate_label = tk.Label(self.text_frame, text="Rate: 0.0 berries/min", anchor="w", justify="left")
-        self.rate_label.pack(anchor="w")
-        
-        self.total_label = tk.Label(self.text_frame, text="Total: 0 berries", anchor="w", justify="left")
-        self.total_label.pack(anchor="w")
-        
-        # Create canvas for the bar chart - fixed width for now
-        self.canvas_width = 400
-        # self.canvas = tk.Canvas(self.frame, width=self.canvas_width, height=height, highlightthickness=0)
-        # self.canvas.pack(side=tk.LEFT, padx=(20, 20))
+                    # Calculate available height for image considering label and padding
+                    label_height = 15  # Approximate height for the classification text
+                    padding = 6  # Top and bottom padding
+                    scrollbar_height = 20  # Height of the scrollbar
+                    
+                    # Available height for the image
+                    img_height = self.height - label_height - padding - scrollbar_height
+                    
+                    # Resize image: scale height, maintain aspect ratio
+                    aspect_ratio = image.width / image.height
+                    img_width = int(img_height * aspect_ratio)
+                    image = image.resize((img_width, img_height), Image.Resampling.LANCZOS)
+                    tk_image = ImageTk.PhotoImage(image)
+                    self.tk_images.append(tk_image)  # Prevent garbage collection
 
-        self.canvas = tk.Canvas(self.frame, height=height, highlightthickness=0)
-        self.canvas.pack(side=tk.LEFT, fill='both', expand=True, padx=(0, 40))
+                    # Create a frame for image and label
+                    img_frame = tk.Frame(self.images_frame)
+                    img_frame.pack(side=tk.LEFT, padx=2, pady=2, fill=tk.Y)
 
-        # add clear button to the right side of the frame
-        self.clear_button = tk.Button(self.frame, text="Reset Statistics", command=self.carousel_widget.reset_statistics)
-        self.clear_button.pack(side=tk.RIGHT, padx=(0, 20), pady=(0, 10))
+                    # Add the label above the image with the classification and score
+                    classification = blueberry.history[idx] if idx < len(blueberry.history) else ""
+                    score = ""
+                    # If classification is a tuple or list, extract score if present
+                    if isinstance(classification, (tuple, list)) and len(classification) > 1:
+                        score = f" ({classification[1]:.2f})"
+                        classification_text = f"{classification[0]}{score}"
+                    else:
+                        classification_text = str(classification)
+                    score_label = tk.Label(
+                        img_frame,
+                        text=classification_text,
+                        font=("Arial", 7),
+                        bg="#fff",
+                        fg="#222"
+                    )
+                    score_label.pack(side=tk.TOP, pady=(1, 0))
 
-        # self.frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Initial draw
-        self.update_display()
-    
-    def pack(self, **kwargs):
-        """Pack the main frame."""
-        self.frame.pack(**kwargs)
-    
-    def grid(self, **kwargs):
-        """Grid the main frame."""
-        self.frame.grid(**kwargs)
-    
-    def update_display(self):
-        """Update the statistics display."""
-        stats_data = self.carousel_widget.get_statistics()
-        self.draw_bar_chart(stats_data)
-        self.update_text_labels(stats_data)
-    
-    def draw_bar_chart(self, stats_data):
-        """Draw the horizontal stacked bar chart."""
-        self.canvas.delete("all")
-        
-        stats = stats_data["stats"]
-        total = stats_data["total_berries"]
-        
-        if total == 0:
-            # Draw empty bar
-            self.canvas.create_rectangle(10, 20, self.canvas.winfo_width() - 20, 40, 
-                                       fill="#eeeeee", outline="#cccccc", width=2)
-            self.canvas.create_text(self.canvas.winfo_width() // 2, 30, text="No berries sorted yet", 
-                                  fill="#666", font=("Arial", 10))
-            return
-        
-        # Calculate percentages and bar segments
-        bar_x = 10
-        bar_y1 = 20
-        bar_y2 = 60
-        self.canvas.update_idletasks()
-        bar_width = self.canvas.winfo_width() - 50
-        
-        current_x = bar_x
-        
-        # Draw segments for each classification
-        for label in ["RIPE", "UNDERRIPE", "OVERRIPE"]:
-            count = stats[label]
-            if count > 0:
-                percentage = count / total
-                segment_width = bar_width * percentage
-                
-                color = self.carousel_widget.COLORS[label]["fill"]
-                outline = self.carousel_widget.COLORS[label]["outline"]
-                
-                self.canvas.create_rectangle(current_x, bar_y1, current_x + segment_width, bar_y2,
-                                           fill=color,)
-                
-                # Add percentage text if segment is wide enough
-                if segment_width > 40:
-                    text_x = current_x + segment_width / 2
-                    self.canvas.create_text(text_x, 30, text=f"{percentage*100:.1f}%",
-                                          fill="#000", font=("Arial", 9, "bold"))
-                
-                current_x += segment_width
-        
-        # Add border around entire bar
-        self.canvas.create_rectangle(bar_x, bar_y1, bar_x + bar_width, bar_y2,
-                                   fill="")
-        
-        # Add legend below the bar
-        legend_y = 70
-        legend_x = bar_x
-        
-        for i, label in enumerate(["RIPE", "UNDERRIPE", "OVERRIPE"]):
-            count = stats[label]
-            percentage = (count / total * 100) if total > 0 else 0
-            color = self.carousel_widget.COLORS[label]["fill"]
-            
-            # Small colored square
-            self.canvas.create_rectangle(legend_x, legend_y, legend_x + 10, legend_y + 10,
-                                       fill=color, outline="#333", width=1)
-            
-            # Label text
-            text = f"{label}: {count} ({percentage:.1f}%)"
-            self.canvas.create_text(legend_x + 15, legend_y + 5, text=text,
-                                  anchor="w", fill="#333", font=("Arial", 8))
-            
-            # Move to next position
-            text_width = len(text) * 6 + 25  # Approximate text width
-            legend_x += text_width + 20
-    
-    def update_text_labels(self, stats_data):
-        """Update the text labels with current statistics."""
-        total_time = stats_data["total_time"]
-        berries_per_minute = stats_data["berries_per_minute"]
-        total_berries = stats_data["total_berries"]
-        
-        # Format time as HH:MM:SS
-        hours = int(total_time // 3600)
-        minutes = int((total_time % 3600) // 60)
-        seconds = int(total_time % 60)
-        time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-        
-        self.time_label.config(text=f"Total Time: {time_str}")
-        self.rate_label.config(text=f"Rate: {berries_per_minute:.1f} berries/min")
-        self.total_label.config(text=f"Total: {total_berries} berries")
+                    label = tk.Label(
+                        img_frame, 
+                        image=tk_image, 
+                        bd=2, 
+                        relief=tk.RIDGE, 
+                        highlightbackground=border_color, 
+                        highlightcolor=border_color, 
+                        highlightthickness=2
+                    )
+                    label.pack(side=tk.TOP, pady=(0, 2))
+
+        # Update scroll region after adding images
+        self.images_frame.update_idletasks()
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
