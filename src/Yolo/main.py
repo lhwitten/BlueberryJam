@@ -22,7 +22,7 @@ class WebcamApp:
         self.root.title("YOLO Webcam Segmentation")
         
         # Load YOLO model using a robust relative path
-        model_path = os.path.join(os.path.dirname(__file__), "models", "best2.pt")
+        model_path = os.path.join(os.path.dirname(__file__), "models", "best-train7-1_42_aug_9.pt")
         self.model = YOLO(model_path)
         # self.model = YOLO("best.pt")
 
@@ -63,7 +63,7 @@ class WebcamApp:
 
         # Initialize webcam
         cv2.OPENCV_VIDEOIO_DEBUG=1
-        self.camera_index = tk.IntVar(value=1)
+        self.camera_index = tk.IntVar(value=0)
         self.cap_backend = tk.IntVar(value=cv2.CAP_DSHOW)  # DirectShow backend for Windows
         self.cap = cv2.VideoCapture(self.camera_index.get(), self.cap_backend.get())
 
